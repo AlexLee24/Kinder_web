@@ -32,7 +32,8 @@ def _ensure_auto_exposure_column() -> None:
                 "ADD COLUMN IF NOT EXISTS auto_plan TEXT NOT NULL DEFAULT 'up,gp,rp,ip,zp', "
                 "ADD COLUMN IF NOT EXISTS auto_result JSONB, "
                 "ADD COLUMN IF NOT EXISTS auto_camera TEXT, "
-                "ADD COLUMN IF NOT EXISTS auto_mags JSONB"
+                "ADD COLUMN IF NOT EXISTS auto_mags JSONB, "
+                "ADD COLUMN IF NOT EXISTS auto_no_moon BOOLEAN NOT NULL DEFAULT FALSE"
             )
             # auto_snr NULL = chosen from the target's brightness (auto_exposure.auto_snr). It started as NOT NULL
             # DEFAULT 20 (2026-11-26): once, those 20s (the default, never picked by anyone) become automatic.
@@ -161,7 +162,7 @@ _TARGET_SELECT = (
     "SELECT t.target_id, t.active, t.name, t.mag, t.ra, t.dec, "
     "t.telescope, t.program, t.priority, t.plan_filter, t.plan_count, "
     "t.plan_time, t.repeat, t.plan, t.note, t.create_by, "
-    "t.auto_exposure, t.auto_snr, t.auto_plan, t.auto_result, t.auto_camera, t.auto_mags, t.off_since, t.keep, "
+    "t.auto_exposure, t.auto_snr, t.auto_plan, t.auto_result, t.auto_camera, t.auto_mags, t.auto_no_moon, t.off_since, t.keep, "
     "(SELECT MAX(l.date) FROM obs.logs l WHERE l.target_id = t.target_id AND l.observed) AS last_observed, "
     "u.email AS created_by_email "
     "FROM obs.targets t "
@@ -226,6 +227,7 @@ def save_observation_target(name: str, ra: float, dec: float,
                              auto_plan: str = 'up,gp,rp,ip,zp',
                              auto_camera: str | None = None,
                              auto_mags: dict | None = None,
+                             auto_no_moon: bool = False,
                              **legacy_kwargs) -> int | None:
     """Insert or update an observation target.  Returns target_id."""
     if legacy_kwargs.get('repeat_count') is not None:
@@ -265,20 +267,20 @@ def save_observation_target(name: str, ra: float, dec: float,
                 "INSERT INTO obs.targets "
                 "(active, name, mag, ra, dec, telescope, program, priority, "
                 " plan_filter, plan_count, plan_time, repeat, plan, note, create_by, auto_exposure, auto_snr, auto_plan,"
-                " auto_camera, auto_mags) "
-                "VALUES (TRUE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                " auto_camera, auto_mags, auto_no_moon) "
+                "VALUES (TRUE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                 "ON CONFLICT (name, telescope) DO UPDATE SET "
                 "  mag=EXCLUDED.mag, ra=EXCLUDED.ra, dec=EXCLUDED.dec, "
                 "  program=EXCLUDED.program, "
                 "  priority=EXCLUDED.priority, plan_filter=EXCLUDED.plan_filter, "
                 "  plan_count=EXCLUDED.plan_count, plan_time=EXCLUDED.plan_time, "
                 "  repeat=EXCLUDED.repeat, plan=EXCLUDED.plan, note=EXCLUDED.note, "
-                "  auto_exposure=EXCLUDED.auto_exposure, auto_snr=EXCLUDED.auto_snr, auto_plan=EXCLUDED.auto_plan, auto_camera=EXCLUDED.auto_camera, auto_mags=EXCLUDED.auto_mags "
+                "  auto_exposure=EXCLUDED.auto_exposure, auto_snr=EXCLUDED.auto_snr, auto_plan=EXCLUDED.auto_plan, auto_camera=EXCLUDED.auto_camera, auto_mags=EXCLUDED.auto_mags, auto_no_moon=EXCLUDED.auto_no_moon "
                 "RETURNING target_id",
                 (name, mag, ra, dec, telescope, program, priority,
                  plan_filter, plan_count, plan_time,
                  repeat, plan, note, create_by, auto_exposure, auto_snr, auto_plan, auto_camera,
-                 json.dumps(auto_mags) if auto_mags else None)
+                 json.dumps(auto_mags) if auto_mags else None, bool(auto_no_moon))
             )
             target_id = cur.fetchone()[0]
             conn.commit()
@@ -295,7 +297,7 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
         'telescope': 'telescope', 'program': 'program', 'priority': 'priority',
         'repeat': 'repeat', 'plan': 'plan', 'note': 'note',
         'auto_exposure': 'auto_exposure', 'auto_snr': 'auto_snr', 'auto_plan': 'auto_plan',
-        'auto_camera': 'auto_camera', 'auto_mags': 'auto_mags',
+        'auto_camera': 'auto_camera', 'auto_mags': 'auto_mags', 'auto_no_moon': 'auto_no_moon',
     }
     sets = []
     params = []

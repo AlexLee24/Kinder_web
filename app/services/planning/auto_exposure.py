@@ -269,6 +269,21 @@ def _castor():
     return plan, _catalogue
 
 
+class _NoMoon:
+    """The preset catalogue with CASTOR's moonlight left out (environment.auto_calc_background False): the sky is
+    the site's moonless mu_dark. Everything else is the catalogue's own."""
+    def __init__(self, cat):
+        self._cat = cat
+
+    def __getattr__(self, k):
+        return getattr(self._cat, k)
+
+    def resolve(self, *a, **kw):
+        frag = self._cat.resolve(*a, **kw)
+        frag.setdefault('environment', {})['auto_calc_background'] = False
+        return frag
+
+
 def _fwhm(cat):
     try:
         return float(cat.profile(SITE).median_seeing_fwhm or 1.4)
@@ -276,12 +291,14 @@ def _fwhm(cat):
         return 1.4
 
 
-def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None, telescope=TELESCOPE, camera=None):
+def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None, telescope=TELESCOPE, camera=None, moon=True):
     """CASTOR's plan for one filter on SLT (or LOT), frames at least min_exp s (default: MIN_EXP_S of that filter on
     SLT, MIN_EXP_LOT_S on LOT): {'status', 'exp', 'count', 'elapsed', 'snr', 'sat_s'} (exp None when no frame works)."""
     if min_exp is None:
         min_exp = MIN_EXP_LOT_S if telescope == 'LOT' else next((MIN_EXP_S[sf] for sf, _, cf in BANDS if cf == castor_filter), 60)
     plan, cat = _castor()
+    if not moon:                        # plan for a moonless sky (the form's "Ignore the Moon")
+        cat = _NoMoon(cat)
     kw = dict(site=SITE, telescope=telescope, camera=camera_for(telescope, camera), optic_filter=castor_filter, ra=float(ra), dec=float(dec),
               mag=float(mag), observing_time_utc=when.isoformat().replace('+00:00', 'Z'), fwhm=_fwhm(cat))
     r = plan.compute_plan(cat, **kw, target_snr=float(snr))
@@ -308,7 +325,33 @@ def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None, telescope=
         t = safe[-1]
         rec = plan.compute_snr(cat, **kw, single_exp_time=t, num_exposures=max(1, math.ceil(rec['total_s'] / t)))['chosen']
     return {'status': status, 'exp': int(rec['exp_s']), 'count': int(rec['frames']), 'elapsed': int(rec['elapsed_s']),
-            'snr': round(float(rec['snr']), 1), 'sat_s': round(t_sat, 1)}
+            'snr': round(float(rec['snr']), 1), 'sat_s': round(t_sat, 1), 'sky': _num(r['conditions'].get('sky_mag_arcsec2'))}
+
+
+def _num(v, nd=2):
+    try:
+        return round(float(v), nd)
+    except (TypeError, ValueError):
+        return None
+
+
+def moon_effect(castor_filter, ra, dec, when, telescope=TELESCOPE, camera=None):
+    """How much the Moon brightens the sky under the target at `when`, by CASTOR (Krisciunas & Schaefer 1991 on the
+    site's moonless sky): {'sky', 'dark', 'dmag', 'factor', 'level', 'illum', 'sep', 'moon_alt'}. dmag is the sky's
+    brightening (mag/arcsec2); factor = 10**(0.4 dmag) is the extra exposure a sky-limited target needs."""
+    plan, cat = _castor()
+    kw = dict(site=SITE, telescope=telescope, camera=camera_for(telescope, camera), optic_filter=castor_filter, ra=float(ra),
+              dec=float(dec), mag=20.0, observing_time_utc=when.isoformat().replace('+00:00', 'Z'), fwhm=_fwhm(cat),
+              single_exp_time=60, num_exposures=1)
+    lit = plan.compute_snr(cat, **kw)['conditions']
+    dark = plan.compute_snr(_NoMoon(cat), **kw)['conditions']
+    sky, dsky = _num(lit.get('sky_mag_arcsec2')), _num(dark.get('sky_mag_arcsec2'))
+    dmag = round(max(0.0, dsky - sky), 2) if sky is not None and dsky is not None else None
+    factor = round(10 ** (0.4 * dmag), 2) if dmag is not None else None
+    level = None if dmag is None else ('none' if dmag < 0.1 else 'low' if dmag < 0.5 else 'moderate' if dmag < 1.2 else 'high')
+    return {'sky': sky, 'dark': dsky, 'dmag': dmag, 'factor': factor, 'level': level,
+            'illum': _num(lit.get('moon_illumination'), 3), 'sep': _num(lit.get('moon_separation_deg'), 1),
+            'moon_alt': _num(lit.get('moon_elevation_deg'), 1)}
 
 
 WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot reach the S/N (sky background)',
@@ -329,7 +372,7 @@ def clean_mags(m):
 
 
 def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None,
-            telescope=TELESCOPE, camera=None, mags_set=None):
+            telescope=TELESCOPE, camera=None, mags_set=None, moon=True):
     """The target's plan for tonight for the filters picked (choice), at its own S/N or (snr None) auto_snr's.
     Raises NoMagnitude when there is nothing to compute it from."""
     picked = selection(choice)
@@ -348,7 +391,7 @@ def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, dete
     when, alt = best_time(ra, dec, day)
     filters, notes = {}, []
     for sf, b, cf in BANDS:
-        p = plan_filter(cf, ra, dec, mags[sf]['mag'], snr, when, telescope=telescope, camera=camera)
+        p = plan_filter(cf, ra, dec, mags[sf]['mag'], snr, when, telescope=telescope, camera=camera, moon=moon)
         filters[sf] = {**p, **mags[sf]}
         if p['exp'] is None:
             notes.append(f'{b}: {WHY.get(p["status"], p["status"])}')
@@ -361,11 +404,16 @@ def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, dete
     total = sum(filters[sf]['elapsed'] for sf in usable)
     if alt < MIN_ALT_DEG:
         notes.append(f'highest tonight only {alt:.0f}°')
+    try:                                    # the Moon's effect at that time, in r (shown whether or not it is planned for)
+        moon_fx = moon_effect('Sloan_r', ra, dec, when, telescope=telescope, camera=camera)
+    except Exception:
+        moon_fx = None
     return {'computed_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'night': (day or datetime.now(TZ8).date()).isoformat(),
             'when': when.isoformat(), 'alt': round(alt, 1), 'telescope': telescope, 'camera': camera_for(telescope, camera),
             'camera_name': CAMERAS[telescope][camera_for(telescope, camera)], 'camera_auto': camera_auto, 'snr': snr, 'snr_auto': snr_auto, 'brightest': round(brightest, 2), 'selected': picked, 'total_s': total,
             'filters': filters, 'options': options, 'plan': plan, 'too_long': total > MAX_TOTAL_S,
-            'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes, 'latest': _latest(mags)}
+            'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes, 'latest': _latest(mags),
+            'moon': moon_fx, 'moon_ignored': not moon}
 
 
 def _latest(mags):
@@ -388,7 +436,8 @@ def apply(target, **kw):
     from app.db.obs import set_auto_exposure_result
     res = compute(target['name'], target['ra'], target['dec'], None,          # its stored mag may be old: not used target.get('auto_snr') or None,
                   target.get('auto_plan'), telescope=(target.get('telescope') or TELESCOPE).upper(),
-                  camera=target.get('auto_camera'), mags_set=target.get('auto_mags'), **kw)
+                  camera=target.get('auto_camera'), mags_set=target.get('auto_mags'),
+                  moon=not target.get('auto_no_moon'), **kw)
     set_auto_exposure_result(target['id'], res, filters=res['plan'] or None, mag=latest_mag(res))
     return res
 

@@ -900,6 +900,9 @@
                             <label class="pa-auto-snr" for="obs-auto-camera">Camera
                                 <select id="obs-auto-camera" onchange="onAutoCameraChange()"><option value="">Auto (last used)</option></select>
                             </label>
+                            <label class="pa-auto-snr" for="obs-auto-nomoon" title="Plan for a moonless sky: CASTOR leaves the Moon's light out">
+                                <input type="checkbox" id="obs-auto-nomoon" onchange="onAutoMoonChange()"> Ignore Moon
+                            </label>
                         </div>
                         <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
                         <div id="auto-exp-plan" class="pa-auto-plan" hidden></div>

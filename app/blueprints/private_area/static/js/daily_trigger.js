@@ -355,6 +355,7 @@ function openTargetModal(telescope) {
     autoResult = null; autoSel = AUTO_ALL.slice(); autoPanelOpen = false;
     autoCamera = '';
     autoMags = {};
+    autoNoMoon = false; _syncNoMoon();
     toggleTelescopeUI(telescope);
     renderFilterRows();
     _renderAutoPlan();
@@ -492,6 +493,12 @@ function _fillAutoCameras(telescope) {
 }
 // The MAG column: blank = the automatic magnitude (shown grey), a number = that filter's magnitude
 let autoMags = {};
+let autoNoMoon = false;          // plan for a moonless sky (obs.targets.auto_no_moon)
+function _syncNoMoon() { const c = document.getElementById('obs-auto-nomoon'); if (c) c.checked = autoNoMoon; }
+function onAutoMoonChange() {
+    autoNoMoon = !!document.getElementById('obs-auto-nomoon').checked;
+    if (autoResult) applyAutoExposure();
+}
 function _autoMagChange(inp) {
     const v = parseFloat(inp.value);
     if (isFinite(v)) autoMags[inp.dataset.f] = v; else delete autoMags[inp.dataset.f];
@@ -529,6 +536,18 @@ function _fillLatestMag(res) {
 }
 function _autoUse(list) { autoSel = list.slice(); autoChosen = true; _applyAutoSel(); }
 
+// The Moon at the plan's time, by CASTOR: how much it brightens the sky under the target (r), and the time that costs
+function _moonLine(res) {
+    const m = res.moon;
+    if (!m || m.dmag == null) return '';
+    const lvl = { none: 'none', low: 'low', moderate: 'moderate', high: 'high' }[m.level] || m.level;
+    const where = m.moon_alt != null && m.moon_alt < 0 ? 'below the horizon' :
+        (m.illum != null ? Math.round(m.illum * 100) + '% lit' : '') + (m.sep != null ? ', ' + Math.round(m.sep) + '° away' : '');
+    return '<div class="pa-auto-moon is-' + escapeHtml(m.level || '') + '"><b>Moon: ' + escapeHtml(lvl) + '</b> <span>' + escapeHtml(where) + '</span>' +
+        (m.dmag >= 0.1 ? '<span>sky +' + m.dmag.toFixed(1) + ' mag/″² in r (' + m.sky.toFixed(1) + ' vs ' + m.dark.toFixed(1) + ' dark) · a sky-limited target needs ×' + m.factor.toFixed(1) + ' the time</span>' : '') +
+        (res.moon_ignored ? '<span class="pa-auto-moon-off">ignored in this plan</span>' : '') + '</div>';
+}
+
 function _renderAutoPlan() {
     const box = document.getElementById('auto-exp-plan');
     if (!box) return;
@@ -553,6 +572,7 @@ function _renderAutoPlan() {
             (res.camera_auto ? ' <span>(auto: the camera ' + escapeHtml(res.telescope) + ' last used)</span>' : '') +
             (last.telescope ? '<span>Last ' + escapeHtml(res.telescope) + ' frames: ' + escapeHtml(isoDay(last.telescope.night) + ' · ' + last.telescope.camera) + '</span>' : '') +
             '<span>This target: ' + (last.target ? escapeHtml(isoDay(last.target.night) + ' · ' + last.target.camera) : 'not observed yet') + '</span></div>';
+        html += _moonLine(res);
         html += '<div class="pa-auto-plan-head">' + (!autoChosen ? 'Picked filters: ' + _fmtSec(total) + ' · '
             : isAutoExposure ? 'Total ' + _fmtSec(total) + ' at the telescope · ' : 'Not auto: the filters below are your own · ') +
             'highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr +
@@ -605,6 +625,7 @@ async function applyAutoExposure() {
         auto_plan: autoSel.join(','),
         auto_camera: autoCamera,
         auto_mags: autoMags,
+        auto_no_moon: autoNoMoon,
         telescope: document.getElementById('obs-telescope').value
     };
     if (!body.name || !body.ra || !body.dec) { say('Enter the name and coordinates first'); return; }
@@ -796,6 +817,7 @@ async function addObservationTarget(event) {
         auto_plan: autoSel.join(','),
         auto_camera: autoCamera,
         auto_mags: autoMags,
+        auto_no_moon: autoNoMoon,
         filters: obsFilters,
         plan: plan,
         note_gl: note_gl,
@@ -1492,6 +1514,7 @@ async function editTarget(id) {
     const wasAuto = !!t.auto_exposure;
     autoCamera = t.auto_camera || '';
     autoMags = Object.assign({}, t.auto_mags || {});
+    autoNoMoon = !!t.auto_no_moon; _syncNoMoon();
     const snrEl = document.getElementById('obs-auto-snr');
     if (snrEl) snrEl.value = t.auto_snr || '';
     autoSel = _autoParse(t.auto_plan);

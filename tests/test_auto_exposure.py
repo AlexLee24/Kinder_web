@@ -219,3 +219,13 @@ def test_detections_older_than_a_month_are_not_used():
     assert ae.magnitudes('X', '19', old, NOW)['rp']['from'] == 'typed'
     m = ae.magnitudes('X', None, old + [{'mag': 18.0, 'mjd': NOW - 20, 'filter': 'g', 'source': 'ZTF'}], NOW)
     assert m['rp']['mag'] == 18.0 and m['rp']['from'] == 'other'
+
+
+@pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
+def test_ignoring_the_moon_plans_for_a_moonless_sky():
+    when = datetime(2026, 11, 26, 20, 30, tzinfo=timezone.utc)          # a 93% Moon 35 deg from the target
+    fx = ae.moon_effect('Sloan_r', 135.0685, 40.9214, when)
+    assert fx['dmag'] > 1.2 and fx['level'] == 'high' and fx['factor'] > 3
+    lit = ae.plan_filter('Sloan_r', 135.0685, 40.9214, 21.4, 10, when)
+    dark = ae.plan_filter('Sloan_r', 135.0685, 40.9214, 21.4, 10, when, moon=False)
+    assert dark['sky'] == fx['dark'] and dark['elapsed'] < lit['elapsed']
