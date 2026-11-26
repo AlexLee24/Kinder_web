@@ -6,7 +6,7 @@
 
 {% macro day_badges(item, small=false) -%}
     {%- set s = 'hl-badge-sm' if small else 'hl-badge' -%}
-    {% if item.has_lens %}<span class="{{ s }} hl-lens" title="A candidate from a lens catalogue">LENS MATCH</span>{% endif %}
+    {% if item.has_lens %}<span class="{{ s }} hl-lens" title="A candidate from a lens catalogue">Lens match</span>{% endif %}
     {% if item.lens_cand %}<span class="{{ s }} hl-lens-cand" title="glSN?: too bright for its host, possibly lensed">Lens? {{ item.lens_cand }}</span>{% endif %}
     {% if item.slsn %}<span class="{{ s }} hl-slsn" title="SLSN?: M ≤ −21">SLSN? {{ item.slsn }}</span>{% endif %}
 {%- endmacro %}
@@ -14,6 +14,6 @@
 {% macro obj_badges(has_lens, tags, small=true) -%}
     {%- set s = 'hl-badge-sm' if small else 'hl-badge' -%}
     {%- set tags = tags or [] -%}
-    {% if has_lens %}<span class="{{ s }} hl-lens" title="A candidate from a lens catalogue">LENS MATCH</span>{% elif 'glSN?' in tags %}<span class="{{ s }} hl-lens-cand" title="glSN?: too bright for its host, possibly lensed">Lens?</span>{% endif %}
+    {% if has_lens %}<span class="{{ s }} hl-lens" title="A candidate from a lens catalogue">Lens match</span>{% elif 'glSN?' in tags %}<span class="{{ s }} hl-lens-cand" title="glSN?: too bright for its host, possibly lensed">Lens?</span>{% endif %}
     {% if 'SLSN?' in tags %}<span class="{{ s }} hl-slsn" title="SLSN?: M ≤ −21">SLSN?</span>{% endif %}
 {%- endmacro %}
