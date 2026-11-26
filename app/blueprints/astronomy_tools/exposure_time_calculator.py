@@ -6,6 +6,7 @@ from . import astronomy_tools_bp
 from .helpers import _CASTOR_ETC_BODY_PATH, _CASTOR_ETC_SIMPLE_BODY_PATH, _CASTOR_PRESETS_PATH
 
 logger = logging.getLogger(__name__)
+CAMERA_NAMES = {'SLT_DZ936': 'Andor936', 'SLT_DU934P': 'Andor934'}
 
 
 @astronomy_tools_bp.route('/exposure_time_calculator')
@@ -37,8 +38,16 @@ def api_exposure_time_calculator_presets():
     first-listed-is-default preset order."""
     if not os.path.isfile(_CASTOR_PRESETS_PATH):
         return jsonify({'error': 'Presets file not found'}), 404
-    with open(_CASTOR_PRESETS_PATH, 'rb') as f:
-        return Response(f.read(), mimetype='application/json')
+    import json
+    with open(_CASTOR_PRESETS_PATH, encoding='utf-8') as f:
+        doc = json.load(f)                       # dicts keep the file's order
+    # the SLT cameras under the names the lab uses (CASTOR's own file keeps its descriptive ones)
+    for key, name in CAMERA_NAMES.items():
+        for prof in (doc.get('profiles') or {}).values():
+            cam = (prof.get('cameras') or {}).get(key)
+            if isinstance(cam, dict):
+                cam['name'] = name
+    return Response(json.dumps(doc, ensure_ascii=False), mimetype='application/json')
 
 def _castor_validation_error_response(e):
     messages = [

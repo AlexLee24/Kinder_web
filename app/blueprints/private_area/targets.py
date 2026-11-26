@@ -33,11 +33,15 @@ def _coord_error(data):
 
 
 def _auto_exposure(data, telescope):
-    """(auto, snr, plan choice, CASTOR result or None, error) for a target being saved: an SLT target with auto
-    exposure gets tonight's plan now (and every day after, auto_exposure.update_all); with no photometry on Kinder
-    and no magnitude typed it cannot use auto exposure."""
+    """(auto, snr, plan choice, CASTOR result or None, error, camera) for a target being saved: a target with auto
+    exposure (SLT or LOT) gets tonight's plan now (and every day after, auto_exposure.update_all), with its camera
+    (SLT: Andor934 by default, or Andor936); with no photometry on Kinder and no magnitude typed it cannot use auto
+    exposure."""
     from app.services.planning import auto_exposure as ae
-    auto = bool(data.get('auto_exposure', False)) and telescope != 'LOT'
+    telescope = telescope if telescope in ae.CAMERAS else 'SLT'
+    auto = bool(data.get('auto_exposure', False))
+    # its own camera, or None: the one the telescope last used (auto_exposure.last_camera), resolved at each plan
+    camera = data.get('auto_camera') if data.get('auto_camera') in ae.CAMERAS[telescope] else None
     raw = str(data.get('auto_snr') if data.get('auto_snr') is not None else '').strip().lower()
     snr = None                         # blank / auto: from the target's brightness (auto_exposure.auto_snr)
     if raw not in ('', 'auto', '0'):
@@ -46,19 +50,19 @@ def _auto_exposure(data, telescope):
         except ValueError:
             snr = 0
         if not 3 <= snr <= 500:
-            return auto, None, None, None, 'Target S/N must be a number between 3 and 500, or blank for auto.'
+            return auto, None, None, None, 'Target S/N must be a number between 3 and 500, or blank for auto.', camera
     choice = ','.join(ae.selection(data.get('auto_plan')))
     if not auto:
-        return False, snr, choice, None, None
+        return False, snr, choice, None, None, camera
     try:
         res = ae.compute(data.get('name'), _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec')),
-                         data.get('mag'), snr, choice)
+                         data.get('mag'), snr, choice, telescope=telescope, camera=camera)
     except ae.NoMagnitude as e:
-        return auto, snr, choice, None, str(e)
+        return auto, snr, choice, None, str(e), camera
     except Exception:
         logger.exception('auto exposure for %s', data.get('name'))
-        return auto, snr, choice, None, 'Could not compute the auto exposure plan (CASTOR).'
-    return auto, snr, choice, res, None
+        return auto, snr, choice, None, 'Could not compute the auto exposure plan (CASTOR).', camera
+    return auto, snr, choice, res, None, camera
 
 
 def _store_auto_result(target_id, res):
@@ -92,7 +96,7 @@ def api_observation_targets():
         if _err:
             return jsonify({'error': _err}), 400
         _telescope = (data.get('telescope') or '').strip().upper()
-        _auto_exp, _snr, _choice, _res, _aerr = _auto_exposure(data, _telescope)
+        _auto_exp, _snr, _choice, _res, _aerr, _cam = _auto_exposure(data, _telescope)
         if _aerr:
             return jsonify({'error': _aerr}), 400
         new_id = save_observation_target(
@@ -106,6 +110,7 @@ def api_observation_targets():
             auto_exposure=_auto_exp,
             auto_snr=_snr,
             auto_plan=_choice,
+            auto_camera=_cam,
             filters=data.get('filters', []),
             plan=data.get('plan'),
             program=data.get('program'),
@@ -201,7 +206,7 @@ def api_observation_target_update(target_id):
     if _err:
         return jsonify({'error': _err}), 400
     _tele_put = (data.get('telescope') or '').strip().upper()
-    _auto_exp_put, _snr, _choice, _res, _aerr = _auto_exposure(data, _tele_put)
+    _auto_exp_put, _snr, _choice, _res, _aerr, _cam = _auto_exposure(data, _tele_put)
     if _aerr:
         return jsonify({'error': _aerr}), 400
     if update_observation_target(
@@ -216,6 +221,7 @@ def api_observation_target_update(target_id):
         auto_exposure=_auto_exp_put,
         auto_snr=_snr,
         auto_plan=_choice,
+        auto_camera=_cam,
         filters=data.get('filters', []),
         plan=data.get('plan'),
         program=data.get('program'),
@@ -317,21 +323,14 @@ def api_auto_exposure():
     _err = _coord_error(data)
     if _err:
         return jsonify({'error': _err}), 400
-    if (data.get('telescope') or '').strip().upper() == 'LOT':      # "Switch to LOT": a plan for the filter rows
-        from app.services.planning import auto_exposure as ae
-        _, snr, choice, _, err = _auto_exposure({**data, 'auto_exposure': False}, 'LOT')
-        if err:
-            return jsonify({'error': err}), 400
-        try:
-            res = ae.compute(data.get('name'), _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec')),
-                             data.get('mag'), snr, choice, telescope='LOT')
-        except ae.NoMagnitude as e:
-            return jsonify({'error': str(e)}), 400
-        except Exception:
-            logger.exception('LOT plan for %s', data.get('name'))
-            return jsonify({'error': 'Could not compute the LOT plan (CASTOR).'}), 400
-        return jsonify({'success': True, 'result': res})
-    _, _, _, res, err = _auto_exposure({**data, 'auto_exposure': True}, 'SLT')
+    from app.services.planning import auto_exposure as ae
+    tel = (data.get('telescope') or 'SLT').strip().upper()
+    _, _, _, res, err, _ = _auto_exposure({**data, 'auto_exposure': True}, tel)
     if err:
         return jsonify({'error': err}), 400
+    try:          # what the telescope last used (all filters of a night share one camera), and this target's last night
+        res['last'] = {'telescope': ae.last_frames(res['telescope']),
+                       'target': ae.last_frames(res['telescope'], data.get('name')) if data.get('name') else None}
+    except Exception:
+        logger.exception('last frames for %s', data.get('name'))
     return jsonify({'success': True, 'result': res})

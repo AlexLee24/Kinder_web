@@ -1234,6 +1234,9 @@ body::before {
 .pa-auto-exp-help { margin: 0; font-size: 0.74rem; color: var(--kw-text-muted, #888); line-height: 1.45; }
 .pa-auto-plan { display: flex; flex-direction: column; gap: 8px; font-size: 0.8rem; }
 .pa-auto-plan-head { color: var(--kw-text-secondary, #bbb); }
+.pa-auto-rig { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78rem; color: var(--kw-text-muted, #999); }
+.pa-auto-rig b { color: #fff; font-weight: 600; }
+.pa-auto-snr select { padding: 4px 6px; }
 .pa-auto-opts { display: flex; flex-wrap: wrap; gap: 6px; border: 0; margin: 0; padding: 0; }
 .pa-auto-opts legend { padding: 0; margin-bottom: 4px; font-size: 0.74rem; color: var(--kw-text-muted, #888); }
 .pa-auto-opt { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; cursor: pointer;

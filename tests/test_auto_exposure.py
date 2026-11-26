@@ -98,19 +98,21 @@ def test_castor_plan_never_goes_below_the_shortest_frame():
 def test_a_faint_target_gets_more_frames_not_longer_ones():
     when = datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc)
     for cf in ('Sloan_u', 'Sloan_g', 'Sloan_r', 'Sloan_z'):
-        p = ae.plan_filter(cf, 47.9087, -2.0267, 19.5, 20, when)
+        p = ae.plan_filter(cf, 47.9087, -2.0267, 19.5, 20, when, camera='SLT_DZ936')   # no flatness floor
         assert p['exp'] == ae.MAX_EXP_S and p['count'] >= 2 and p['snr'] >= 20, (cf, p)
 
 
 def test_target_form_without_magnitude_cannot_use_auto(monkeypatch):
     from app.blueprints.private_area import targets
     monkeypatch.setattr(ae, 'latest_detections', lambda name: [])
-    auto, snr, choice, res, err = targets._auto_exposure(
+    auto, snr, choice, res, err, cam = targets._auto_exposure(
         {'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00', 'mag': '', 'auto_exposure': True, 'auto_snr': 15,
          'auto_plan': 'rp,gp'}, 'SLT')
-    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'enter its magnitude' in err
+    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'enter its magnitude' in err and cam is None
     assert targets._auto_exposure({'auto_exposure': True, 'auto_snr': 1}, 'SLT')[4].startswith('Target S/N')
-    assert targets._auto_exposure({'auto_exposure': True}, 'LOT')[0] is False
+    lot = targets._auto_exposure({'auto_exposure': True, 'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00'}, 'LOT')
+    assert lot[0] is True and lot[5] is None and 'enter its magnitude' in lot[4]          # LOT auto now too
+    assert targets._auto_exposure({'auto_exposure': False, 'auto_camera': 'SLT_DZ936'}, 'SLT')[5] == 'SLT_DZ936'
 
 
 @pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
@@ -158,8 +160,33 @@ def test_target_form_snr_blank_is_automatic(monkeypatch):
 def test_the_lot_plan_is_much_shorter_for_a_faint_target():
     det = [{'mag': 20.37, 'mjd': 61360.0, 'filter': 'r', 'source': 'SLT(AUTO)'}]
     kw = dict(detections=det, now_mjd=NOW, day=date(2026, 11, 26))
-    slt = ae.compute('AT2026ajog', 41.0, 20.0, **kw)
+    slt = ae.compute('AT2026ajog', 41.0, 20.0, camera='SLT_DZ936', **kw)
     lot = ae.compute('AT2026ajog', 41.0, 20.0, telescope='LOT', **kw)
     assert lot['telescope'] == 'LOT' and slt['telescope'] == 'SLT'
     assert lot['options']['all']['total_s'] * 4 < slt['options']['all']['total_s']
     assert ae.selection('gri') == ['gp', 'rp', 'ip'] and lot['options']['gri']['filters'] == ['gp', 'rp', 'ip']
+
+
+def test_cameras_default_to_andor934_on_slt_and_sophia_on_lot():
+    assert ae.camera_for('SLT') == 'SLT_DU934P' and ae.camera_for('SLT', 'SLT_DZ936') == 'SLT_DZ936'
+    assert ae.camera_for('SLT', 'Sophia') == 'SLT_DU934P' and ae.camera_for('LOT', 'SLT_DZ936') == 'Sophia'
+    assert ae.camera_name('Andor-DZ936') == 'Andor936' and ae.camera_name('Andor-DU934P') == 'Andor934'
+    m = ae.FRAME_CAMERA_RE.search('Calibrated_AT2026afqt_D2026-11-25T113657_T113657_gp_Astrodon_2018_SLT_Andor-DZ936_bin1_gain0_95')
+    assert m and ae.camera_name(m.group(2)) == 'Andor936'
+
+
+def test_without_its_own_camera_a_target_uses_the_one_last_used(monkeypatch):
+    ae._last_cache.clear()
+    monkeypatch.setattr(ae, 'last_frames', lambda tel, name=None: {'night': '2026-11-25', 'camera': 'Andor936'})
+    assert ae.last_camera('SLT')[0] == 'SLT_DZ936'
+    monkeypatch.setattr(ae, 'best_time', lambda ra, dec, day=None: (datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc), 64.6))
+    seen = []
+    monkeypatch.setattr(ae, 'plan_filter', lambda cf, ra, dec, mag, snr, when, **kw: seen.append(kw['camera']) or _p(65))
+    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=DET, now_mjd=NOW)
+    assert res['camera'] == 'SLT_DZ936' and res['camera_auto'] and set(seen) == {'SLT_DZ936'}
+    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=DET, now_mjd=NOW, camera='SLT_DU934P')   # picked: kept
+    assert res['camera'] == 'SLT_DU934P' and not res['camera_auto']
+    ae._last_cache.clear()
+    monkeypatch.setattr(ae, 'last_frames', lambda tel, name=None: None)
+    assert ae.last_camera('SLT')[0] == 'SLT_DU934P'                                            # unknown: Andor934
+    ae._last_cache.clear()

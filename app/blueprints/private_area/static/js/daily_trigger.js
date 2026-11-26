@@ -353,6 +353,7 @@ function openTargetModal(telescope) {
     obsFilters = [];
     isAutoExposure = false;
     autoResult = null; autoSel = AUTO_ALL.slice(); autoPanelOpen = false;
+    autoCamera = '';
     toggleTelescopeUI(telescope);
     renderFilterRows();
     _renderAutoPlan();
@@ -420,17 +421,9 @@ function toggleTelescopeUI(telescope) {
     if (lotContainer) {
         lotContainer.style.display = (telescope === 'LOT') ? 'block' : 'none';
     }
-    // SLT: Auto Exposure (re-planned every day); LOT: the same CASTOR plan, only to fill the filter rows once
-    if (sltAutoExpContainer) {
-        sltAutoExpContainer.style.display = 'flex';
-        const lbl = document.getElementById('btn-auto-exp-label');
-        if (lbl) lbl.textContent = telescope === 'LOT' ? 'LOT plan (CASTOR)' : 'Auto Exposure';
-    }
-
-    // LOT does not support auto exposure — clear badge state
-    if (telescope === 'LOT') {
-        _setAutoExpBadge(false);
-    }
+    // Auto Exposure on both telescopes (CASTOR); the camera list follows the telescope
+    if (sltAutoExpContainer) sltAutoExpContainer.style.display = 'flex';
+    _fillAutoCameras(telescope);
 
     renderFilterRows();
 }
@@ -480,15 +473,34 @@ function _applyAutoSel() {
     if (!autoResult) return;
     obsFilters = autoSel.filter(f => autoResult.filters[f] && autoResult.filters[f].exp)
         .map(f => ({ filter: f, exp: autoResult.filters[f].exp, count: autoResult.filters[f].count }));
-    _setAutoExpBadge(autoResult.telescope !== 'LOT');     // LOT: filled in once, never auto
+    _setAutoExpBadge(true);
     renderFilterRows();
     _renderAutoPlan();
 }
-// Too long on SLT: the same target on LOT (1 m), its filters filled from CASTOR's LOT plan; add the LOT program
-function _autoSwitchLot() {
-    document.getElementById('obs-telescope').value = 'LOT';
-    toggleTelescopeUI('LOT');
-    applyAutoExposure().then(() => { const p = document.getElementById('obs-program'); if (p && !p.value) p.focus(); });
+// The camera CASTOR plans with: Auto (the one the telescope last used) or one picked here. SLT has had several.
+const AUTO_CAMERAS = { SLT: [['SLT_DU934P', 'Andor934'], ['SLT_DZ936', 'Andor936']], LOT: [['Sophia', 'Sophia']] };
+let autoCamera = '';
+function _fillAutoCameras(telescope) {
+    const sel = document.getElementById('obs-auto-camera');
+    if (!sel) return;
+    const cams = AUTO_CAMERAS[telescope] || AUTO_CAMERAS.SLT;
+    const lastLbl = autoResult && autoResult.telescope === telescope && autoResult.camera_auto ? ' (' + autoResult.camera_name + ')' : ' (last used)';
+    sel.innerHTML = '<option value="">Auto' + escapeHtml(lastLbl) + '</option>' +
+        cams.map(([k, n]) => '<option value="' + k + '">' + escapeHtml(n) + '</option>').join('');
+    sel.value = cams.some(([k]) => k === autoCamera) ? autoCamera : '';
+}
+function onAutoCameraChange() {
+    autoCamera = document.getElementById('obs-auto-camera').value;
+    if (autoResult) applyAutoExposure();
+}
+// Too long: the same target on the other telescope (asked first), planned again there; LOT needs a program
+function _autoSwitchTel(tel) {
+    const name = document.getElementById('obs-name').value.trim() || 'this target';
+    if (!confirm('Move ' + name + ' to ' + tel + '? The filters are planned again for ' + tel + (tel === 'LOT' ? ' (fill in the LOT program).' : '.'))) return;
+    document.getElementById('obs-telescope').value = tel;
+    autoCamera = '';
+    toggleTelescopeUI(tel);
+    applyAutoExposure().then(() => { const p = document.getElementById('obs-program'); if (tel === 'LOT' && p && !p.value) p.focus(); });
 }
 function _autoPick(f, on) {
     const set = new Set(autoSel);
@@ -527,19 +539,24 @@ function _renderAutoPlan() {
         const when = new Date(res.when).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Taipei' });
         const total = _autoTotal(autoSel), long = total > res.max_total_s;
         const lot = res.telescope === 'LOT';
-        html += '<div class="pa-auto-plan-head">' + (lot ? 'LOT plan (LOT has no auto exposure, the filters are filled once): ' + _fmtSec(total) + ' · '
-            : !autoChosen ? 'Picked filters: ' + _fmtSec(total) + ' · '
+        const isoDay = iso => iso ? String(iso).slice(0, 10) : '';
+        const last = res.last || {};
+        html += '<div class="pa-auto-rig"><b>' + escapeHtml(res.telescope + ' · ' + res.camera_name) + '</b>' +
+            (res.camera_auto ? ' <span>(auto: the camera ' + escapeHtml(res.telescope) + ' last used)</span>' : '') +
+            (last.telescope ? '<span>Last ' + escapeHtml(res.telescope) + ' frames: ' + escapeHtml(isoDay(last.telescope.night) + ' · ' + last.telescope.camera) + '</span>' : '') +
+            '<span>This target: ' + (last.target ? escapeHtml(isoDay(last.target.night) + ' · ' + last.target.camera) : 'not observed yet') + '</span></div>';
+        html += '<div class="pa-auto-plan-head">' + (!autoChosen ? 'Picked filters: ' + _fmtSec(total) + ' · '
             : isAutoExposure ? 'Total ' + _fmtSec(total) + ' at the telescope · ' : 'Not auto: the filters below are your own · ') +
             'highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr +
             (res.snr_auto ? ' (auto: brightest ' + Number(res.brightest).toFixed(2) + (res.brightest <= 19 ? ' ≤ 19' : ' > 19') + ')' : '') + '</div>';
         const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
         const src = f => day(f.mjd) + ' \u00b7 ' + (f.source || '');
-        const from = f => ({
-            own: src(f),
-            bright: 'brightest in 3 days: ' + f.filter + ' ' + src(f),
-            own_old: src(f) + ' (nothing in 3 days)',
-            other: f.filter + ' ' + src(f) + ' (nothing in 3 days or in this filter)',
-        })[f.from] || 'typed above';
+        const from = f => f.mjd == null ? 'typed above' : ({         // a typed magnitude has no date
+            own: () => src(f),
+            bright: () => 'brightest in 3 days: ' + f.filter + ' ' + src(f),
+            own_old: () => src(f) + ' (nothing in 3 days)',
+            other: () => f.filter + ' ' + src(f) + ' (nothing in 3 days or in this filter)',
+        }[f.from] || (() => 'typed above'))();
         html += '<table class="pa-auto-tbl"><thead><tr><th scope="col">Filter</th><th scope="col">Mag</th><th scope="col">From</th><th scope="col">Frames</th><th scope="col">S/N</th></tr></thead><tbody>' +
             AUTO_ALL.map(sf => {
                 const f = res.filters[sf];
@@ -555,7 +572,7 @@ function _renderAutoPlan() {
             opts.map(([l, label]) => '<button type="button" class="pa-auto-pick' + (isOn(l) ? ' is-on' : '') + (_autoTotal(l) > res.max_total_s ? ' is-long' : '') +
                 '" aria-pressed="' + isOn(l) + '" onclick="_autoUse([' + l.map(x => "'" + x + "'").join(',') + '])">' + escapeHtml(label) +
                 ' <span class="pa-auto-t">' + _fmtSec(_autoTotal(l)) + '</span></button>').join('') +
-            (lot ? '' : '<button type="button" class="pa-auto-pick is-lot" onclick="_autoSwitchLot()">Switch to LOT</button>') + '</div>';
+            '<button type="button" class="pa-auto-pick is-lot" onclick="_autoSwitchTel(\'' + (lot ? 'SLT' : 'LOT') + '\')">Switch to ' + (lot ? 'SLT' : 'LOT') + '</button></div>';
         if (long && autoChosen) html += '<p class="pa-auto-warn">' + escapeHtml(autoSel.map(band).join(' ') + ' takes ' + _fmtSec(total) + ', over ' + _fmtSec(res.max_total_s) + '.') + '</p>';
         if ((res.notes || []).length) html += '<p class="pa-auto-warn">' + escapeHtml(res.notes.join(' ')) + '</p>';
     }
@@ -577,6 +594,7 @@ async function applyAutoExposure() {
         mag: document.getElementById('obs-mag').value.trim(),
         auto_snr: _autoSnr(),
         auto_plan: autoSel.join(','),
+        auto_camera: autoCamera,
         telescope: document.getElementById('obs-telescope').value
     };
     if (!body.name || !body.ra || !body.dec) { say('Enter the name and coordinates first'); return; }
@@ -595,6 +613,7 @@ async function applyAutoExposure() {
         }
         autoResult = data.result;
         _fillLatestMag(autoResult);
+        _fillAutoCameras(autoResult.telescope);
         autoChosen = false;                     // a new answer: pick a plan before the filters fill
         obsFilters = [];
         _setAutoExpBadge(false);
@@ -766,6 +785,7 @@ async function addObservationTarget(event) {
         auto_exposure: isAutoExposure,
         auto_snr: _autoSnr(),
         auto_plan: autoSel.join(','),
+        auto_camera: autoCamera,
         filters: obsFilters,
         plan: plan,
         note_gl: note_gl,
@@ -1276,7 +1296,7 @@ function renderTable(telescope, targets) {
         }
 
         // auto exposure: its S/N and plan, or why tonight's plan could not be made
-        if (t.auto_exposure && t.telescope !== 'LOT') {
+        if (t.auto_exposure) {
             const ar = t.auto_result || {};
             const planName = (ar.selected || []).join(' ');
             const mins = ar.total_s != null ? Math.round(ar.total_s / 60) : null;
@@ -1437,7 +1457,8 @@ async function editTarget(id) {
     }) : [];
 
     // Restore auto exposure: its S/N, plan and last CASTOR result
-    const wasAuto = !!t.auto_exposure && t.telescope !== 'LOT';
+    const wasAuto = !!t.auto_exposure;
+    autoCamera = t.auto_camera || '';
     const snrEl = document.getElementById('obs-auto-snr');
     if (snrEl) snrEl.value = t.auto_snr || '';
     autoSel = _autoParse(t.auto_plan);

@@ -33,7 +33,7 @@ REPORT_FILE = DATA_DIR / 'castor_report' / 'snr_check.json'
 SESSION_KEY = 'castor_snr_check'
 LOGIN_BURST, LOGIN_WINDOW_S = 8, 600          # password tries per IP
 BAND_ORDER = {b: i for i, b in enumerate('ugrizy')}
-CAMERAS = {'Sophia': 'Sophia 2048B', 'SLT_DZ936': 'Andor iKon-L DZ936', 'SLT_DU934P': 'Andor iKon-M DU934P'}
+CAMERAS = {'Sophia': 'Sophia 2048B', 'SLT_DZ936': 'Andor936', 'SLT_DU934P': 'Andor934'}    # the lab's names
 CAMERA_ORDER = {'Sophia': 0, 'SLT_DZ936': 1, 'SLT_DU934P': 2}
 
 
