@@ -988,7 +988,7 @@ async function loadAstroInfoForTargets() {
         data.targets.forEach(function(td) {
             var ids = nameToIds[td.name] || [];
             ids.forEach(function(id) {
-                if (data.moon_alts) dtMoonTrack = { times: data.times_local, alts: data.moon_alts };
+                if (data.moon_alts) dtMoonTrack = { times: data.times_local, alts: data.moon_alts, phase: data.moon_info ? data.moon_info.phase : null };
                 fillAstroInfo(id, td, data.times_local);
             });
         });
@@ -1042,7 +1042,7 @@ function moonSepColor(sep) {
 let dtNightInfo = null;
 // the Moon's altitude for the same night (/api/visibility_data moon_alts), kept for the table's mini plots
 var dtMoonTrack = null;
-function drawMiniVisibilitySVG(altitudes, timesLocal, small, moonAlts) {
+function drawMiniVisibilitySVG(altitudes, timesLocal, small, moonAlts, moonPhase) {
     var N = altitudes ? altitudes.length : 0;
     if (!N || !timesLocal || timesLocal.length !== N) return '';
     var W = small ? 96 : 200, L = small ? 0 : 24, R = small ? 0 : 4, T = small ? 2 : 6, PH = small ? 22 : 56, AX = small ? 2 : 15, H = T + PH + AX;
@@ -1091,7 +1091,9 @@ function drawMiniVisibilitySVG(altitudes, timesLocal, small, moonAlts) {
     }
     if (prev) fillD += 'L' + f(xI(N - 1)) + ',' + f(y30) + ' Z';
     // the Moon: a dashed pale line (above the horizon only)
-    var moon = moonAlts || (dtMoonTrack && dtMoonTrack.times && dtMoonTrack.times[0] === timesLocal[0] ? dtMoonTrack.alts : null);
+    var sameNight = dtMoonTrack && dtMoonTrack.times && dtMoonTrack.times[0] === timesLocal[0];
+    var moon = moonAlts || (sameNight ? dtMoonTrack.alts : null);
+    var phase = moonPhase != null ? moonPhase : (sameNight ? dtMoonTrack.phase : null);
     if (moon && moon.length === N) {
         var moonD = '', pen = false;
         for (var m = 0; m < N; m++) {
@@ -1100,6 +1102,12 @@ function drawMiniVisibilitySVG(altitudes, timesLocal, small, moonAlts) {
             pen = true;
         }
         if (moonD) out.push('<path class="pa-vis-moon" d="' + moonD + '" fill="none" stroke="rgba(235,230,200,0.7)" stroke-width="' + (small ? 1 : 1.2) + '" stroke-dasharray="' + (small ? '2 1.5' : '3 2') + '" stroke-linejoin="round"><title>Moon</title></path>');
+        // the phase (illuminated %), at the Moon's highest point
+        if (moonD && !small && phase != null && isFinite(phase)) {
+            var mi = 0; for (var q = 1; q < N; q++) if (moon[q] > moon[mi]) mi = q;
+            var mx = Math.max(L + 22, Math.min(L + PW - 22, xI(mi))), my = Math.max(T + 8, yA(moon[mi]) - 5);
+            out.push('<text class="pa-vis-moon-phase" x="' + f(mx) + '" y="' + f(my) + '" text-anchor="middle" font-size="9" fill="rgba(235,230,200,0.9)" stroke="#2a2d38" stroke-width="3" paint-order="stroke">\u263E ' + Math.round(phase) + '%</text>');
+        }
     }
     if (fillD) out.push('<path d="' + fillD + '" fill="rgba(77,184,255,0.22)"/>');
     if (belowD) out.push('<path d="' + belowD + '" fill="none" stroke="rgba(255,120,110,0.55)" stroke-width="1.4" stroke-linejoin="round"/>');

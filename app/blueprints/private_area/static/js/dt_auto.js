@@ -670,8 +670,9 @@
             $('tpAstro').replaceChildren(
                 el('span', {}, 'Peak ', el('b', { text: peak + '°', style: `color:${peak >= 30 ? '#7fe0a0' : '#ff9b8f'}` })),
                 el('span', {}, 'Transit ', el('b', { text: td.transit_time_local ? td.transit_time_local.slice(11, 16) : '—' })),
-                el('span', {}, 'Moon ', el('b', { text: td.moon_separation != null ? td.moon_separation + '°' : '—' })));
-            $('tpVis').innerHTML = typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(td.altitudes, d.times_local, false, d.moon_alts) : '';
+                el('span', {}, 'Moon ', el('b', { text: td.moon_separation != null ? td.moon_separation + '°' : '—' })),
+                d.moon_info && d.moon_info.phase != null ? el('span', {}, 'Phase ', el('b', { text: Math.round(d.moon_info.phase) + '%' })) : null);
+            $('tpVis').innerHTML = typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(td.altitudes, d.times_local, false, d.moon_alts, d.moon_info && d.moon_info.phase) : '';
         } catch (e) { say('Could not compute the visibility'); }
     }
     async function previewLc(t, key) {
