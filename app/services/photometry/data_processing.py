@@ -481,7 +481,9 @@ class DataVisualization:
                     abs_max = plot_max_mag
                 name = f'yaxis{i + 2}'
                 axis = dict(
-                    title=dict(text=title, standoff=4) if i else title,
+                    # no redshift: the mirrored axis has no numbers, and Plotly drew its "Abs Mag (z N/A)" title
+                    # on the left, over "App Mag" — leave it untitled (the Info panel says the redshift is N/A)
+                    title=dict(text=title, standoff=4) if i else (title if has_abs_mag_axis else ''),
                     overlaying='y',
                     side='right',
                     range=[abs_max, abs_min],

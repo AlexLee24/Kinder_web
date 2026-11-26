@@ -379,14 +379,13 @@
                 </div>
                 <div class="panel-body">
                     <!-- Phase axis reference epoch (t0): discovery date by default, or a custom MJD/date -->
-                    <div id="phaseRefControls" style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 0 10px; font-size:0.8rem; color:rgba(255,255,255,0.6);">
-                        <span style="white-space:nowrap;">Phase t₀</span>
-                        <input type="text" id="phaseRefInput" placeholder="MJD or YYYY-MM-DD HH:MM" autocomplete="off" spellcheck="false"
-                               style="width:170px; padding:3px 6px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:4px; color:inherit;"
+                    <div id="phaseRefControls" class="phot-phase">
+                        <label for="phaseRefInput" class="phot-phase-l">Phase t₀</label>
+                        <input type="text" id="phaseRefInput" class="phot-phase-input" placeholder="MJD or YYYY-MM-DD HH:MM" autocomplete="off" spellcheck="false" inputmode="decimal"
                                onkeydown="if (event.key === 'Enter') { event.preventDefault(); setPhaseReference(this.value); }">
                         <button type="button" class="kw-btn kw-btn-sm phot-btn" onclick="setPhaseReference(document.getElementById('phaseRefInput').value)">Set</button>
                         <button type="button" class="kw-btn kw-btn-sm phot-btn" onclick="resetPhaseReference()" title="Use the discovery date as t₀">Discovery</button>
-                        <span id="phaseRefLabel" style="white-space:nowrap;"></span>
+                        <span id="phaseRefLabel" class="phot-phase-note"></span>
                     </div>
                     <div id="telescopeToggles" style="display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;"></div>
                     <div style="height:420px; display:flex; position:relative; overflow:hidden;" id="photometryPlotContainer" data-discovery="{{ object_data.discoverydate or '' }}">
@@ -467,7 +466,12 @@
                         </div>
                     </div>
                     <!-- Spectral line chip grid — built by JS on page load -->
-                    <div class="spec-chips-grid" id="specChipsGrid"></div>
+                    <details class="spec-lines-fold" id="specLinesFold" open>
+                        <summary>Spectral lines</summary>
+                        <div class="spec-chips-grid" id="specChipsGrid"></div>
+                    </details>
+                    {#- phones: the line list starts folded (about two screens of chips), it opens below its title -#}
+                    <script>if (window.matchMedia('(max-width: 860px)').matches) document.getElementById('specLinesFold').open = false;</script>
                     <!-- Controls: NIST badge + z + wavelength range -->
                     <div class="spec-lines-controls">
                         <span id="specLineSourceBadge" class="spec-source-badge spec-source-builtin"

@@ -46,6 +46,9 @@ def test_plot_gets_an_axis_per_redshift_shifted_by_its_own_distance():
 
 def test_without_redshifts_the_single_axis_is_unchanged():
     lay = _layout()
-    assert lay['yaxis2']['title']['text'] == 'Abs Mag (z N/A)' and 'yaxis3' not in lay
+    # no redshift: the mirrored right axis carries no numbers and no title (its title used to land over
+    # "App Mag" on the left)
+    assert not lay['yaxis2'].get('title', {}).get('text') and lay['yaxis2']['showticklabels'] is False
+    assert 'yaxis3' not in lay
     lay = _layout(redshift=0.05)
     assert lay['yaxis2']['title']['text'] == 'Abs Mag' and 'yaxis3' not in lay

@@ -1355,7 +1355,7 @@ function loadPhotometryPlot() {
                     
                     const lastPhotSpan = document.getElementById('lastPhotometryDate');
                     if (lastPhotSpan) {
-                        lastPhotSpan.textContent = `(Last photometry: ${dateStr})`;
+                        lastPhotSpan.textContent = `Last photometry ${dateStr}`;
                     }
                 }
             }

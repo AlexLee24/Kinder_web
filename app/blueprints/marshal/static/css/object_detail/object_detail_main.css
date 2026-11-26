@@ -308,6 +308,12 @@ select.btn-modern { min-height: 0; }
     flex-shrink: 0;
 }
 
+/* Phase t0 row (was inline styles): label, field, Set, Discovery, then what t0 is now */
+.phot-phase { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 0 10px; font-size: 0.8rem; color: rgba(255,255,255,0.6); }
+.phot-phase-l { white-space: nowrap; }
+.phot-phase-input { width: 170px; min-height: 32px; padding: 3px 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: inherit; font-variant-numeric: tabular-nums; }
+.phot-phase-note { white-space: nowrap; }
+
 /* Tooltip for toggle labels — rendered via JS into body to bypass overflow:hidden */
 #kinder-tooltip {
     position: fixed;
@@ -525,6 +531,19 @@ select.btn-modern { min-height: 0; }
     flex-wrap: wrap;
 }
 .spec-header-top h3 { margin: 0; font-size: 1rem; color: var(--kw-text-white); font-weight: 600; }
+.spec-lines-fold > summary { cursor: pointer; width: fit-content; margin-bottom: 8px; font-size: 0.8rem; color: var(--kw-text-secondary); }
+.spec-lines-fold > summary:hover { color: var(--kw-text-white); }
+.spec-lines-fold:not([open]) > summary { margin-bottom: 0; }
+/* the fold says it opens: a chevron that turns when it does (in place, nothing moves) */
+.spec-lines-fold > summary { list-style: none; display: flex; align-items: center; gap: 6px; }
+.spec-lines-fold > summary::-webkit-details-marker { display: none; }
+.spec-lines-fold > summary::before {
+    content: ""; width: 14px; height: 14px; flex: none; background: currentColor; transition: transform 0.15s;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 6 6 6-6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.spec-lines-fold[open] > summary::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .spec-lines-fold > summary::before { transition: none; } }
 
 /* Spectral line group toggle row */
 .spec-lines-groups {
@@ -796,7 +815,6 @@ select.btn-modern { min-height: 0; }
     font-size: 12px;
     color: var(--text-secondary);
     margin-top: 4px;
-    font-style: italic;
 }
 
 .edit-result {
@@ -1067,8 +1085,7 @@ select.btn-modern { min-height: 0; }
 
 .perm-toolbar-hint {
     font-size: max(0.78rem, 11px);
-    color: rgba(255,255,255,0.2);
-    font-style: italic;
+    color: rgba(255,255,255,0.45);   /* 0.2 was below readable contrast */
 }
 
 /* Active state: highlighted row */
@@ -1355,7 +1372,6 @@ select.btn-modern { min-height: 0; }
 .perm-empty,
 .perm-loading {
     color: rgba(255,255,255,0.3);
-    font-style: italic;
     font-size: 0.85rem;
     padding: 24px 0;
     text-align: center;
