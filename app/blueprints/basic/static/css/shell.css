@@ -300,7 +300,7 @@ body.shell .flash-message-container { top: calc(var(--kw-nav-h) + 8px); }
    Phones (≤ 860px): rail → floating bottom tab bar, groups → sheet, brand moves into the top bar
    ================================================================ */
 @media (max-width: 860px) {
-    .sh-rail-btn.is-on-phone { background: var(--color-accent-soft); color: var(--color-accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent); }
+    .sh-desk-only { display: none !important; }   /* Planning, Lab, About: inside More on phones */
     /* small buttons in the page bar / page heads still get a 40px tap target on phones */
     .sh-pagebar .kw-btn-sm, .kw-page-actions .kw-btn-sm { min-height: 40px; }
     body.shell {
@@ -326,13 +326,20 @@ body.shell .flash-message-container { top: calc(var(--kw-nav-h) + 8px); }
     html.kw-typing .sh-rail { transform: translateY(150%); }
     .sh-rail-item { flex: 1; display: flex; justify-content: center; position: static; }
     .sh-rail-btn { width: 100%; height: 100%; justify-content: center; border-radius: 16px; font-size: 0.68rem; }
-    .sh-rail-sp, .sh-rail-admin, .sh-rail-settings { display: none !important; }   /* Admin / Settings: account menu (Settings also in About) */
+    .sh-rail-sp, .sh-rail-admin, .sh-rail-settings, .sh-rail-about { display: none !important; }   /* Admin: account menu; Settings, About: More */
     .sh-fly, .sh-rail-sp ~ .sh-rail-item .sh-fly {
         left: 0; right: 0; top: auto; bottom: calc(100% + 10px); min-width: 0; max-height: min(64vh, 520px); overflow-y: auto;
         display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 12px; border-radius: 20px;
         transform: translateY(8px);
     }
     .sh-fly::before { content: none; }
+    /* Safari draws no backdrop blur inside the (blurred) tab bar: the sheet gets a solid surface so the page doesn't show through */
+    .sh-fly { background: rgb(22, 22, 28); -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .sh-fly:focus { outline: none; }
+    /* More holds four sections: smaller tiles and a taller sheet so all of it fits on one screen */
+    .sh-rail .sh-rail-more .sh-fly { max-height: min(76dvh, 660px); }
+    .sh-rail-more .sh-fly a, .sh-rail-more .sh-fly [data-pwa-install] > a { min-height: 64px; gap: 4px; padding: 8px 6px; }
+    .sh-rail-more .sh-fly-h:not(:first-child) { padding-top: 8px; }
     .sh-rail-item:hover .sh-fly, .sh-rail-item:focus-within .sh-fly { opacity: 0; visibility: hidden; transform: translateY(8px); transition: opacity 0.15s, transform 0.15s, visibility 0s linear 0.15s; }
     .sh-rail-item.is-open .sh-fly { opacity: 1; visibility: visible; transform: none; transition: opacity 0.18s, transform 0.18s; }
     .sh-fly-h { grid-column: 1 / -1; font-size: 0.8rem; padding: 2px 6px 4px; }

@@ -26,8 +26,9 @@
         if (was) return;
         item.classList.add('is-open');
         if (mq.matches) body.classList.add('sh-sheet-open');
-        var first = item.querySelector('.sh-fly a.is-on') || item.querySelector('.sh-fly a');
-        if (first) first.focus({ preventScroll: true });
+        // focus goes into the sheet (keyboard users tab on from there) without drawing a ring on a tile that looks chosen
+        var fly = item.querySelector('.sh-fly');
+        if (fly) { fly.setAttribute('tabindex', '-1'); fly.focus({ preventScroll: true }); }
     }
     document.querySelectorAll('.sh-rail-item').forEach(function (item) {
         var btn = item.querySelector('.sh-rail-btn');
