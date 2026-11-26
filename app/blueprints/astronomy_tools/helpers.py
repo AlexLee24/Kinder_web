@@ -48,6 +48,31 @@ _CASTOR_ETC_SIMPLE_BODY_PATH = os.path.join(
 
 _CASTOR_PRESETS_PATH = str(CASTOR_SRC / 'castorGUI' / 'data' / 'presets.json')
 
+# Kinder leaves CASTOR's background-flatness term out (2026-11-26): CASTOR's 2% comes from one undithered night on
+# a large galaxy at 12" apertures (SLT/DU934P, NGC 3621) and caps faint point sources at S/N ~6; it is not applied
+# until it is tested on Lulin point-source photometry. CASTOR's own files keep it.
+NO_FLATNESS = True
+
+
+def castor_presets():
+    """CASTOR's preset catalogue as Kinder uses it (castorCLI.presets.load), the flatness term zeroed."""
+    from castorCLI import presets
+    cat = presets.load(_CASTOR_PRESETS_PATH)
+    if NO_FLATNESS:
+        for prof in cat.profiles.values():
+            for cam in prof.cameras.values():
+                if getattr(cam, 'camera', None) is not None and hasattr(cam.camera, 'background_flatness_fraction'):
+                    cam.camera.background_flatness_fraction = 0.0
+    return cat
+
+
+def zero_flatness(request):
+    """An ETC request (ObservationRequest / BatchObservationRequest) with the flatness term zeroed."""
+    cam = getattr(getattr(request, 'instrument', None), 'camera', None)
+    if NO_FLATNESS and cam is not None and hasattr(cam, 'background_flatness_fraction'):
+        cam.background_flatness_fraction = 0.0
+    return request
+
 # Absolute path to planners/ov_plot/ (sibling blueprint folder)
 _PLANNERS_OV_PLOT_DIR = str(BLUEPRINTS_DIR / 'planners' / 'ov_plot')
 

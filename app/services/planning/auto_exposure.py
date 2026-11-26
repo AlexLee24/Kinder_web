@@ -263,8 +263,8 @@ def _castor():
     import app.paths  # noqa: F401  (puts the vendored CASTOR on sys.path)
     from castorCLI import plan, presets
     if _catalogue is None:
-        from app.blueprints.astronomy_tools.helpers import _CASTOR_PRESETS_PATH
-        _catalogue = presets.load(_CASTOR_PRESETS_PATH)
+        from app.blueprints.astronomy_tools.helpers import castor_presets
+        _catalogue = castor_presets()             # the flatness term left out (helpers.NO_FLATNESS)
     return plan, _catalogue
 
 

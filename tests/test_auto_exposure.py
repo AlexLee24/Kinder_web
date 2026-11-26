@@ -190,3 +190,13 @@ def test_without_its_own_camera_a_target_uses_the_one_last_used(monkeypatch):
     monkeypatch.setattr(ae, 'last_frames', lambda tel, name=None: None)
     assert ae.last_camera('SLT')[0] == 'SLT_DU934P'                                            # unknown: Andor934
     ae._last_cache.clear()
+
+
+@pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
+def test_the_flatness_term_is_left_out_so_andor934_plans_faint_targets():
+    when = datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc)
+    _, cat = ae._castor()
+    assert all(c.camera.background_flatness_fraction == 0 for p in cat.profiles.values() for c in p.cameras.values()
+               if c.camera is not None)
+    p = ae.plan_filter('Sloan_r', 47.9087, -2.0267, 19.5, 20, when, camera='SLT_DU934P')
+    assert p['status'] == 'ok' and p['exp'] == 300 and p['snr'] >= 20       # with the 2% it stopped at S/N ~6.5

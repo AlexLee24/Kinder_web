@@ -3,7 +3,8 @@ import os
 import logging
 from flask import render_template, request, jsonify, Response
 from . import astronomy_tools_bp
-from .helpers import _CASTOR_ETC_BODY_PATH, _CASTOR_ETC_SIMPLE_BODY_PATH, _CASTOR_PRESETS_PATH
+from .helpers import (NO_FLATNESS, _CASTOR_ETC_BODY_PATH, _CASTOR_ETC_SIMPLE_BODY_PATH, _CASTOR_PRESETS_PATH,
+                      castor_presets, zero_flatness)
 
 logger = logging.getLogger(__name__)
 CAMERA_NAMES = {'SLT_DZ936': 'Andor936', 'SLT_DU934P': 'Andor934'}
@@ -47,6 +48,11 @@ def api_exposure_time_calculator_presets():
             cam = (prof.get('cameras') or {}).get(key)
             if isinstance(cam, dict):
                 cam['name'] = name
+    if NO_FLATNESS:                              # the flatness term is left out on Kinder (helpers.NO_FLATNESS)
+        for prof in (doc.get('profiles') or {}).values():
+            for cam in (prof.get('cameras') or {}).values():
+                if isinstance(cam, dict) and isinstance(cam.get('camera'), dict):
+                    cam['camera'].pop('background_flatness_fraction', None)
     return Response(json.dumps(doc, ensure_ascii=False), mimetype='application/json')
 
 def _castor_validation_error_response(e):
@@ -66,7 +72,7 @@ def api_exposure_time_calculator():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
     try:
-        obs_request = ObservationRequest.model_validate(data)
+        obs_request = zero_flatness(ObservationRequest.model_validate(data))
         result = run_calculation(obs_request)
         return jsonify(result.model_dump())
     except ValidationError as e:
@@ -101,7 +107,7 @@ def api_exposure_time_calculator_quick():
             observing_time_utc=data.get('observing_time_utc'),
             fwhm=float(data['fwhm']),
         )
-        catalogue = presets.load(_CASTOR_PRESETS_PATH)
+        catalogue = castor_presets()
         if goal == 'solve_snr':
             result = plan.compute_snr(catalogue, **common,
                                       single_exp_time=float(data['single_exp_time']),
@@ -130,7 +136,7 @@ def api_exposure_time_calculator_batch():
     if not data:
         return jsonify({'error': 'No data provided'}), 400
     try:
-        batch_request = BatchObservationRequest.model_validate(data)
+        batch_request = zero_flatness(BatchObservationRequest.model_validate(data))
         result = run_batch_calculation(batch_request)
         return jsonify(result.model_dump())
     except ValidationError as e:
