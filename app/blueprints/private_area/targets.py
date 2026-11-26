@@ -52,17 +52,24 @@ def _auto_exposure(data, telescope):
         if not 3 <= snr <= 500:
             return auto, None, None, None, 'Target S/N must be a number between 3 and 500, or blank for auto.', camera
     choice = ','.join(ae.selection(data.get('auto_plan')))
+    mags_set = ae.clean_mags(data.get('auto_mags') if isinstance(data.get('auto_mags'), dict) else {})
     if not auto:
         return False, snr, choice, None, None, camera
     try:
         res = ae.compute(data.get('name'), _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec')),
-                         data.get('mag'), snr, choice, telescope=telescope, camera=camera)
+                         data.get('mag'), snr, choice, telescope=telescope, camera=camera, mags_set=mags_set)
     except ae.NoMagnitude as e:
         return auto, snr, choice, None, str(e), camera
     except Exception:
         logger.exception('auto exposure for %s', data.get('name'))
         return auto, snr, choice, None, 'Could not compute the auto exposure plan (CASTOR).', camera
     return auto, snr, choice, res, None, camera
+
+
+def ae_mags(data):
+    """The magnitudes typed per filter in the form (blank: automatic), as stored on the target."""
+    from app.services.planning.auto_exposure import clean_mags
+    return clean_mags(data.get('auto_mags') if isinstance(data.get('auto_mags'), dict) else {}) or None
 
 
 def _store_auto_result(target_id, res):
@@ -111,6 +118,7 @@ def api_observation_targets():
             auto_snr=_snr,
             auto_plan=_choice,
             auto_camera=_cam,
+            auto_mags=ae_mags(data),
             filters=data.get('filters', []),
             plan=data.get('plan'),
             program=data.get('program'),
@@ -222,6 +230,7 @@ def api_observation_target_update(target_id):
         auto_snr=_snr,
         auto_plan=_choice,
         auto_camera=_cam,
+        auto_mags=ae_mags(data),
         filters=data.get('filters', []),
         plan=data.get('plan'),
         program=data.get('program'),

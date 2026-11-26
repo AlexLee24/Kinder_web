@@ -354,6 +354,7 @@ function openTargetModal(telescope) {
     isAutoExposure = false;
     autoResult = null; autoSel = AUTO_ALL.slice(); autoPanelOpen = false;
     autoCamera = '';
+    autoMags = {};
     toggleTelescopeUI(telescope);
     renderFilterRows();
     _renderAutoPlan();
@@ -489,6 +490,13 @@ function _fillAutoCameras(telescope) {
         cams.map(([k, n]) => '<option value="' + k + '">' + escapeHtml(n) + '</option>').join('');
     sel.value = cams.some(([k]) => k === autoCamera) ? autoCamera : '';
 }
+// The MAG column: blank = the automatic magnitude (shown grey), a number = that filter's magnitude
+let autoMags = {};
+function _autoMagChange(inp) {
+    const v = parseFloat(inp.value);
+    if (isFinite(v)) autoMags[inp.dataset.f] = v; else delete autoMags[inp.dataset.f];
+    applyAutoExposure();
+}
 function onAutoCameraChange() {
     autoCamera = document.getElementById('obs-auto-camera').value;
     if (autoResult) applyAutoExposure();
@@ -551,7 +559,8 @@ function _renderAutoPlan() {
             (res.snr_auto ? ' (auto: brightest ' + Number(res.brightest).toFixed(2) + (res.brightest <= 19 ? ' ≤ 19' : ' > 19') + ')' : '') + '</div>';
         const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
         const src = f => day(f.mjd) + ' \u00b7 ' + (f.source || '');
-        const from = f => f.mjd == null ? 'typed above' : ({         // a typed magnitude has no date
+        const from = f => f.from !== 'set' && f.mjd == null ? 'typed above' : ({         // a typed magnitude has no date
+            set: () => 'typed here' + (f.auto_mag != null ? ' (auto ' + Number(f.auto_mag).toFixed(2) + ')' : ''),
             own: () => src(f),
             bright: () => 'brightest in 3 days: ' + f.filter + ' ' + src(f),
             own_old: () => src(f) + ' (nothing in 3 days)',
@@ -561,7 +570,8 @@ function _renderAutoPlan() {
             AUTO_ALL.map(sf => {
                 const f = res.filters[sf];
                 const frames = f.exp ? f.exp + ' s × ' + f.count : (f.status || '—');
-                return '<tr class="' + (autoSel.includes(sf) ? '' : 'is-off') + '"><th scope="row">' + band(sf) + '</th><td class="is-num">' + f.mag.toFixed(2) +
+                return '<tr class="' + (autoSel.includes(sf) ? '' : 'is-off') + '"><th scope="row">' + band(sf) + '</th><td class="is-num"><input class="pa-auto-mag" type="number" step="0.01" min="5" max="30" inputmode="decimal" aria-label="' + band(sf) + ' magnitude (blank: automatic)" data-f="' + sf + '" placeholder="' +
+                    (f.from === 'set' ? (f.auto_mag != null ? Number(f.auto_mag).toFixed(2) : '') : f.mag.toFixed(2)) + '" value="' + (autoMags[sf] != null ? autoMags[sf] : '') + '" onchange="_autoMagChange(this)">' +
                     '</td><td class="pa-auto-from">' + escapeHtml(from(f)) + '</td><td class="is-num">' + escapeHtml(frames) + '</td><td class="is-num">' + (f.snr != null ? f.snr.toFixed(0) : '—') + '</td></tr>';
             }).join('') + '</tbody></table>';
         const opts = [[autoSel, 'Keep current: ' + autoSel.map(band).join(' ')], [['gp', 'rp', 'ip'], 'Only gp + rp + ip'], [['gp', 'rp'], 'Only gp + rp'], [['rp'], 'Only rp']]
@@ -595,6 +605,7 @@ async function applyAutoExposure() {
         auto_snr: _autoSnr(),
         auto_plan: autoSel.join(','),
         auto_camera: autoCamera,
+        auto_mags: autoMags,
         telescope: document.getElementById('obs-telescope').value
     };
     if (!body.name || !body.ra || !body.dec) { say('Enter the name and coordinates first'); return; }
@@ -612,7 +623,6 @@ async function applyAutoExposure() {
             return;
         }
         autoResult = data.result;
-        _fillLatestMag(autoResult);
         _fillAutoCameras(autoResult.telescope);
         autoChosen = false;                     // a new answer: pick a plan before the filters fill
         obsFilters = [];
@@ -786,6 +796,7 @@ async function addObservationTarget(event) {
         auto_snr: _autoSnr(),
         auto_plan: autoSel.join(','),
         auto_camera: autoCamera,
+        auto_mags: autoMags,
         filters: obsFilters,
         plan: plan,
         note_gl: note_gl,
@@ -1459,6 +1470,7 @@ async function editTarget(id) {
     // Restore auto exposure: its S/N, plan and last CASTOR result
     const wasAuto = !!t.auto_exposure;
     autoCamera = t.auto_camera || '';
+    autoMags = Object.assign({}, t.auto_mags || {});
     const snrEl = document.getElementById('obs-auto-snr');
     if (snrEl) snrEl.value = t.auto_snr || '';
     autoSel = _autoParse(t.auto_plan);
