@@ -481,7 +481,7 @@
         let last = null, cov = null, timer = null, seq = 0;
 
         const mark = (o, it) => {
-            o.textContent = o.dataset.label + (!it ? '' : it.ok === true ? '  ✓' : it.ok === false ? '  ✗ not covered' : '  ?');
+            o.textContent = o.dataset.label + (!it ? '' : it.ok === true ? ' · covered' : it.ok === false ? ' · not covered' : ' · coverage unknown');
         };
         const render = () => {
             parts.forEach(p => {

@@ -20,7 +20,7 @@ function initGame() {
     document.getElementById("guess-input").disabled = false;
     document.getElementById("btn-guess").disabled = false;
     document.getElementById("guess-input").focus();
-    updateStatus("Game Restarted! Guessed 4 new unique digits.", "var(--kw-text-secondary)");
+    updateStatus("New game: 4 new unique digits to find.", "var(--kw-text-secondary)");
 }
 
 function updateStatus(message, color = "#fff") {
@@ -45,12 +45,12 @@ function makeGuess() {
         return;
     }
     if (!/^\d+$/.test(guess)) {
-        updateStatus("Numbers only!", "#ff4757");
+        updateStatus("Use digits only.", "#ff4757");
         return;
     }
     const uniqueDigits = new Set(guess.split(""));
     if (uniqueDigits.size !== 4) {
-        updateStatus("Digits must be unique!", "#ff4757");
+        updateStatus("Each digit can appear once.", "#ff4757");
         return;
     }
 
@@ -79,7 +79,7 @@ function makeGuess() {
 
     // End game logic
     if (A === 4) {
-        updateStatus(`Congratulations! You found the number in ${attempts} attempts!`, "#4CAF50");
+        updateStatus(`Found it in ${attempts} attempts.`, "#4CAF50");
         document.getElementById("btn-guess").disabled = true;
         document.getElementById("guess-input").disabled = true;
         submitScore(attempts);

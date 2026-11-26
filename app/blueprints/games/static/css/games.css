@@ -28,7 +28,6 @@
     padding: 0 14px;
     font-size: 1.2rem;
     text-align: center;
-    letter-spacing: 5px;
 }
 .game-controls input::placeholder { letter-spacing: normal; }
 
@@ -48,8 +47,8 @@
 .history-table td:nth-child(2) { font-family: var(--kw-font-mono); }
 
 /* A / B in the history keep their own colours */
-.result-a { color: #4db8ff; font-weight: bold; }
-.result-b { color: #ff9800; font-weight: bold; }
+.result-a { color: #4db8ff; font-weight: 600; }
+.result-b { color: #ff9800; font-weight: 600; }
 
 @media (max-width: 600px) {
     .game-controls { flex-direction: column; }

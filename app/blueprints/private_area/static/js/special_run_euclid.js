@@ -189,7 +189,7 @@
         const alias = (c.aliases || []).length ? `<span class="sr-muted">${esc(c.aliases.join(', '))}</span>` : '';
         const z = c.redshift != null ? `z = ${(+c.redshift).toPrecision(4)}` : '';
         const fits = (c.bands || []).map((b) => `<a href="${fileUrl(c.slug, b + '.fits')}">${esc(b.replace('NIR_', ''))}</a>`).join('');
-        const err = (c.errors || []).length ? `<span class="sr-muted">⚠ ${esc(c.errors.join('; '))}</span>` : '';
+        const err = (c.errors || []).length ? `<span class="sr-muted"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> ${esc(c.errors.join('; '))}</span>` : '';
         return `<article class="kw-panel sr-card" data-slug="${esc(c.slug)}">
             <div class="sr-card-body"><b>${name}</b>${alias}<span>${esc(c.type || '')}</span><span>${z}</span>
             <span class="sr-muted">${(+c.ra).toFixed(5)} ${(+c.dec).toFixed(5)}</span>
