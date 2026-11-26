@@ -1381,15 +1381,15 @@ function renderTable(telescope, targets) {
             magDisplay = '<span class="pa-mag-display">[Mag: ' + escapeHtml(t.mag) + ']</span>';
         }
 
-        // repeat sits with the filters (the sequence runs that many times); the total counts every run
+        // repeat sits next to the time: one pass of the sequence, then (repeat: n, total: n × pass)
         const rep = parseInt(t.repeat_count) || 0;
         const repeatInfo = '';
-        if (rep > 0 && filterExpHTML !== '-') {
-            filterExpHTML += '<div class="pa-repeat" title="#REPEAT ' + rep + ': the whole sequence runs ' + rep + ' times">' +
-                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>' +
-                ' Repeat × ' + rep + '</div>';
-        }
         totalExp = targetTotalExp(t);
+        let expHead = totalExp + 's';
+        if (rep > 0 && filterExpHTML !== '-') {
+            expHead = (totalExp / rep) + 's <span class="pa-exp-rep" title="#REPEAT ' + rep + ': the whole sequence runs ' + rep +
+                ' times">(repeat: ' + rep + ', total: ' + totalExp + 's)</span>';
+        }
 
         let activeToggle = '<label class="pa-action-switch" title="Toggle API visibility">' +
             '<input type="checkbox" onchange="toggleTargetActive(' + t.id + ', this.checked)" ' + (t.is_active !== false ? 'checked' : '') + '>' +
@@ -1430,7 +1430,7 @@ function renderTable(telescope, targets) {
             '<td class="pa-td-sky">' +
                 '<div class="pa-td-coord" onclick="toggleTargetCoordDisplayMode()" title="Click to switch coordinate format"><span>' + escapeHtml(coordDisplay.ra) + '</span> <span>' + escapeHtml(coordDisplay.dec) + '</span></div>' +
             '</td>' +
-            '<td class="pa-td-exp"><div class="pa-td-total-exp">' + totalExp + ' s</div><div class="pa-td-filter-exp">' + filterExpHTML + '</div></td>' +
+            '<td class="pa-td-exp"><div class="pa-td-total-exp">' + expHead + '</div><div class="pa-td-filter-exp">' + filterExpHTML + '</div></td>' +
             notesCellHtml(t) +
             '<td class="pa-td-actions">' +
                 '<div class="pa-action-cell">' +
