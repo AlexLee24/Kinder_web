@@ -1250,6 +1250,8 @@ body::before {
 .pa-auto-tbl thead th { font-size: 0.72rem; color: var(--kw-text-muted, #888); }
 .pa-auto-tbl tbody th, .pa-auto-opt { text-transform: none; font-family: var(--kw-font-mono, monospace); }
 .pa-auto-tbl td.is-num { font-family: var(--kw-font-mono, monospace); }
+.pa-auto-mag { width: 70px; padding: 2px 6px; font: inherit; color: #fff; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; }
+.pa-auto-mag::placeholder { color: var(--kw-text-muted, #888); opacity: 1; }
 .pa-auto-tbl .is-off td { opacity: 0.45; }
 .pa-auto-from { color: var(--kw-text-muted, #888); white-space: normal; }
 .pa-auto-warn { margin: 0; color: #ffb74d; }

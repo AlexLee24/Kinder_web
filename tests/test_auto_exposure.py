@@ -200,3 +200,13 @@ def test_the_flatness_term_is_left_out_so_andor934_plans_faint_targets():
                if c.camera is not None)
     p = ae.plan_filter('Sloan_r', 47.9087, -2.0267, 19.5, 20, when, camera='SLT_DU934P')
     assert p['status'] == 'ok' and p['exp'] == 300 and p['snr'] >= 20       # with the 2% it stopped at S/N ~6.5
+
+
+def test_a_magnitude_typed_for_a_filter_replaces_the_automatic_one(monkeypatch):
+    _fake(monkeypatch, {f: _p(65) for f in ('Sloan_u', 'Sloan_g', 'Sloan_r', 'Sloan_i', 'Sloan_z')})
+    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=DET, now_mjd=NOW, mags_set={'up': '18.5', 'zp': 'x', 'ip': 99})
+    assert res['filters']['up']['mag'] == 18.5 and res['filters']['up']['from'] == 'set'
+    assert res['filters']['up']['auto_mag'] == 16.73                     # the automatic one, shown grey
+    assert res['filters']['zp']['from'] == 'own' and res['filters']['ip']['from'] == 'bright'
+    nophot = ae.compute('SN 2026x', 47.9, -2.0, detections=[], now_mjd=NOW, mags_set={'rp': 19.0})
+    assert nophot['filters']['rp']['mag'] == 19.0 and nophot['filters']['gp']['mag'] == 19.0

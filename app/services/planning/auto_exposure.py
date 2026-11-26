@@ -314,12 +314,31 @@ WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot 
        'below_horizon': 'not above the horizon tonight'}
 
 
+def clean_mags(m):
+    """{script filter: magnitude} typed on a target (5 to 30 mag), the rest dropped."""
+    out = {}
+    for sf, v in (m or {}).items():
+        try:
+            v = float(str(v).lstrip('>').strip())
+        except (TypeError, ValueError):
+            continue
+        if sf in ALL and 5 <= v <= 30:
+            out[sf] = round(v, 2)
+    return out
+
+
 def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None,
-            telescope=TELESCOPE, camera=None):
+            telescope=TELESCOPE, camera=None, mags_set=None):
     """The target's plan for tonight for the filters picked (choice), at its own S/N or (snr None) auto_snr's.
     Raises NoMagnitude when there is nothing to compute it from."""
     picked = selection(choice)
+    # a magnitude typed for a filter (the form's MAG column) replaces the automatic one; 'auto_mag' keeps that
+    mags_set = clean_mags(mags_set)
+    if typed_mag in (None, '') and mags_set:
+        typed_mag = min(mags_set.values())          # no photometry: the typed ones stand in for the rest
     mags = magnitudes(name, typed_mag, detections, now_mjd)
+    for sf, v in mags_set.items():
+        mags[sf] = {'mag': v, 'from': 'set', 'auto_mag': mags[sf]['mag'], 'auto_from': mags[sf]['from']}
     snr_auto = not snr
     camera_auto = camera not in CAMERAS.get(telescope, {})
     if camera_auto:                         # no camera of its own: the one the telescope last used
@@ -350,7 +369,7 @@ def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, dete
 
 def _latest(mags):
     """The newest detection the plan was computed from ({'mag', 'filter', 'mjd', 'source'}), None when typed."""
-    ds = [m for m in mags.values() if m.get('from') != 'typed' and m.get('mjd') is not None]
+    ds = [m for m in mags.values() if m.get('from') not in ('typed', 'set') and m.get('mjd') is not None]
     if not ds:
         return None
     d = max(ds, key=lambda m: m['mjd'])
@@ -368,7 +387,7 @@ def apply(target, **kw):
     from app.db.obs import set_auto_exposure_result
     res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or None,
                   target.get('auto_plan'), telescope=(target.get('telescope') or TELESCOPE).upper(),
-                  camera=target.get('auto_camera'), **kw)
+                  camera=target.get('auto_camera'), mags_set=target.get('auto_mags'), **kw)
     set_auto_exposure_result(target['id'], res, filters=res['plan'] or None, mag=latest_mag(res))
     return res
 
