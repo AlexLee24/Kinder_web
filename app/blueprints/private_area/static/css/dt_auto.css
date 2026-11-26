@@ -44,6 +44,16 @@
 .dta-pri.is-urgent { color: #ff6b6b; } .dta-pri.is-high { color: #ffb340; } .dta-pri.is-normal { color: var(--kw-text-secondary); }
 .dta-mags { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .dta-mags > span { display: inline-flex; align-items: center; gap: 6px; }
+.dta-visits { border-collapse: collapse; font-size: 0.86rem; }
+.dta-visits th, .dta-visits td { padding: 2px 14px 2px 0; text-align: left; white-space: nowrap; vertical-align: middle; font-weight: 400; }
+.dta-visits thead th { font-size: 0.74rem; padding-bottom: 4px; }
+.dta-visits thead th .dta-dot { vertical-align: 1px; }
+.dta-visits tbody th { font-size: 0.8rem; }
+.dta-imgs { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.dta-imgs th, .dta-imgs td { padding: 6px 10px 6px 0; text-align: left; vertical-align: top; border-top: 1px solid var(--dta-line); font-weight: 400; }
+.dta-imgs thead th { border-top: 0; color: var(--kw-text-muted); font-size: 0.74rem; }
+.dta-imgs .dta-file { overflow-wrap: anywhere; font-size: 0.72rem; color: var(--kw-text-muted); }
+.dta-imgs .is-bad { color: #ffb340; }
 .dta-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
 .dta-dot.is-ring { background: none; box-shadow: inset 0 0 0 1.5px #fff; }
 .dta-tri { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--kw-text-secondary); display: inline-block; }

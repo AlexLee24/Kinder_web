@@ -47,13 +47,40 @@
         const txt = s === 'running' && r.n_frames && !short ? `Measuring · ${r.n_done || 0} of ${r.n_frames} frames` : (short ? SHORT : STATE)[s] || s;
         return el('span', { class: 'dta-state is-' + s }, s === 'running' ? el('span', { class: 'dta-spin', 'aria-hidden': 'true' }) : null, txt);
     }
-    // Failed or running: the state opens the details (why it failed, how the run is going, the log)
+    // The state opens the details: why it failed, how the run is going, what came of each image, the log
+    const MORE = { failed: ['Why?', 'Why it failed'], running: ['Log', 'Log of the run'], done: ['Details', 'What came of each image, and the log'],
+                   lim: ['Details', 'What came of each image, and the log'] };
     function stateBtn(r, short) {
         const s = rowState(r);
-        if (!r.id || (s !== 'failed' && s !== 'running')) return stateEl(r, short);
-        return el('button', { type: 'button', class: 'dta-why', title: s === 'failed' ? 'Why it failed' : 'Log of the run',
-                              'aria-haspopup': 'dialog', onclick: () => openDetails(r) },
-            stateEl(r, short), el('span', { class: 'dta-why-more', text: s === 'failed' ? 'Why?' : 'Log' }));
+        if (!r.id || !MORE[s]) return stateEl(r, short);
+        return el('button', { type: 'button', class: 'dta-why', title: MORE[s][1], 'aria-haspopup': 'dialog', onclick: () => openDetails(r) },
+            stateEl(r, short), el('span', { class: 'dta-why-more', text: MORE[s][0] }));
+    }
+    // One line per measured image: its filter, time, file and what came of it (magnitude or limit or no zero point; TS or why not)
+    function imageRows(r, zpNotes) {
+        const ps = (r.phot || []).slice().sort((a, b) => (a.mjd || 0) - (b.mjd || 0));
+        if (!ps.length) return null;
+        const res = p => {
+            const b = band(p.filter), out = [];
+            if (p.det && p.mag != null) out.push(el('div', {}, el('span', { class: 'mono', text: `${p.mag.toFixed(2)} ± ${p.err != null ? p.err.toFixed(2) : '—'}` }),
+                el('span', { class: 'dta-muted', text: p.snr != null ? `  S/N ${p.snr.toFixed(1)}` : '' })));
+            else if (p.lim != null) out.push(el('div', {}, 'Not detected: ', el('span', { class: 'mono', text: `> ${p.lim.toFixed(2)}` }), ' (3σ limit)'));
+            else if (p.snr != null) out.push(el('div', { class: 'is-bad', text: `Measured (S/N ${p.snr.toFixed(1)}) but no zero point: ${zpNotes[b] || 'no reference stars in this band'}` }));
+            else out.push(el('div', { class: 'is-bad', text: 'No measurement' }));
+            const src = TPL[p.template] || p.template || '';
+            out.push(p.ts
+                ? el('div', { class: 'dta-muted', text: 'Template-subtracted' + (src ? ' with ' + src : '') + (p.relaxed ? ' (relaxed alignment, flux scale checked)' : '') })
+                : el('div', { class: 'is-bad', text: 'Without template subtraction: ' + (p.ts_note || 'not subtracted') }));
+            if (p.veto) out.push(el('div', { class: 'is-bad', text: p.veto }));
+            return out;
+        };
+        return el('section', {}, el('h3', { text: 'Each image' }),
+            el('table', { class: 'dta-imgs' },
+                el('thead', {}, el('tr', {}, ['Filter', 'Time', 'Result'].map(h => el('th', { scope: 'col', text: h })))),
+                el('tbody', {}, ps.map(p => el('tr', {},
+                    el('th', { scope: 'row' }, fchip(p.filter)),
+                    el('td', { class: 'mono dta-nowrap' }, utOf(p.mjd), el('div', { class: 'dta-muted', text: p.mjd != null ? 'MJD ' + p.mjd.toFixed(4) : '' })),
+                    el('td', {}, res(p), el('div', { class: 'dta-file', text: p.image || '' })))))));
     }
     let dlgTimer = null;
     async function openDetails(r) {
@@ -76,6 +103,7 @@
                     el('form', { method: 'dialog' }, el('button', { class: 'dta-iconbtn', value: 'close', 'aria-label': 'Close', html: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' }))),
                 d.error ? el('p', { class: 'dta-warn', text: d.error }) : null,
                 d.reason ? el('div', { class: 'dta-reason' }, el('b', { text: d.status === 'failed' ? 'Reason' : 'Note' }), el('p', { text: d.reason })) : null,
+                imageRows(r, d.zp_notes || {}),
                 d.n_in != null ? el('p', { class: 'dta-muted dtw-small', text: `${d.n_ok ?? 0} of ${d.n_in} images measured` + (d.progress ? ` · ${d.progress.done} of ${d.progress.total} done in this run` : '') }) : null,
                 d.images && d.images.length ? el('section', {}, el('h3', { text: 'Images not measured' }),
                     el('ul', { class: 'dta-list' }, d.images.map(f => el('li', {}, el('span', { class: 'mono', text: f.name }),
@@ -141,10 +169,38 @@
             .sort((a, b) => 'ugrizyocw'.indexOf(band(a[0].filter)) - 'ugrizyocw'.indexOf(band(b[0].filter)));
     }
     const utOf = mjd => mjd == null ? '' : new Date((mjd - 40587) * 864e5).toISOString().slice(11, 16) + ' UT';
-    function filterPoints(ps) {
-        const f = ps[0].filter;
-        return el('span', { class: 'dta-fpts' }, el('i', { class: 'dta-dot', style: `background:${col(f)}` }), el('span', { class: 'dta-muted', text: band(f) + ' ' }),
-            ps.map((p, i) => el('span', { class: 'dta-pt', title: utOf(p.mjd) }, i ? el('span', { class: 'dta-muted', text: ' → ' }) : null, magEl(p), ' ', tsEl(p))));
+    // The night's points by visit: one row per visit (MJD, then each filter), a new visit after a gap of > 30 min
+    const VISIT_GAP_D = 30 / 1440;
+    function visits(r) {
+        const ps = (r.phot || []).filter(p => p.mjd != null).sort((a, b) => a.mjd - b.mjd);
+        const groups = [];
+        for (const p of ps) {
+            const g = groups[groups.length - 1];
+            if (g && p.mjd - g.last <= VISIT_GAP_D) { g.pts.push(p); g.last = p.mjd; } else groups.push({ pts: [p], last: p.mjd });
+        }
+        const rows = [];
+        for (const g of groups) {
+            const mine = [];
+            for (const p of g.pts) {       // a filter twice in one visit: a row of its own
+                const row = mine.find(x => !x.by[band(p.filter)]) || (mine.push({ by: {} }), mine[mine.length - 1]);
+                row.by[band(p.filter)] = p;
+            }
+            for (const row of mine) {
+                const m = Object.values(row.by).map(p => p.mjd);
+                rows.push({ mjd: m.reduce((a, b) => a + b, 0) / m.length, by: row.by });
+            }
+        }
+        return rows;
+    }
+    function visitTable(r) {
+        const bands = [...new Set((r.phot || []).map(p => band(p.filter)))].sort((a, b) => 'ugrizyocw'.indexOf(a) - 'ugrizyocw'.indexOf(b));
+        const fname = b => (r.phot || []).find(p => band(p.filter) === b).filter;
+        return el('table', { class: 'dta-visits' },
+            el('thead', {}, el('tr', {}, el('th', { scope: 'col', class: 'dta-muted', text: 'MJD' }),
+                bands.map(b => el('th', { scope: 'col' }, el('i', { class: 'dta-dot', style: `background:${col(fname(b))}` }), el('span', { class: 'dta-muted', text: ' ' + b }))))),
+            el('tbody', {}, visits(r).map(v => el('tr', {},
+                el('th', { scope: 'row', class: 'mono dta-muted', title: utOf(v.mjd), text: v.mjd.toFixed(3) }),
+                bands.map(b => { const p = v.by[b]; return el('td', { title: p ? utOf(p.mjd) : null }, p ? [magEl(p), ' ', tsEl(p)] : el('span', { class: 'dta-muted', text: '—' })); })))));
     }
     function deltaEl(r) {
         const ds = bestPerFilter(r).filter(p => p.det && p.mag != null);
@@ -273,8 +329,7 @@
                 el('div', { class: 'dta-sub' }, r.telescope, pri ? el('span', { class: 'dta-pri is-' + pri.toLowerCase(), text: ' · ' + pri }) : null)),
             el('td', { 'data-l': 'Frame' }, r.frames && r.frames.length ? thumb(r, r.frames.includes('r') ? 'r' : r.frames[0]) : el('span', { class: 'dta-muted', text: '—' })),
             el('td', { 'data-l': 'Magnitudes' }, best.length
-                ? el('div', {}, el('div', { class: 'dta-mags' }, pointsPerFilter(r).map(filterPoints)),
-                    ...noTsNotes(r.phot || []))
+                ? el('div', {}, visitTable(r), ...noTsNotes(r.phot || []))
                 : s === 'failed' ? el('span', { class: 'dta-muted', text: r.reason || 'No measurement' }) : framesEl(r)),
             el('td', { 'data-l': 'Since last epoch', class: 'dta-nowrap' }, deltaEl(r)),
             el('td', { 'data-l': 'Status' }, stateBtn(r),

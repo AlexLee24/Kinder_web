@@ -135,6 +135,37 @@ def no_ts_reason(tid, band):
     return f'AutoPhOT could not align the {label} template'
 
 
+GAIA_DOWN_RE = re.compile(r'\[web\] Gaia archive not answering \((.*?)\): (.+?) not calibrated in this run')
+
+
+def zp_notes(tid):
+    """{band: why it has no zero point} from what the runner logged in a workspace (bands calibrated against Gaia XP
+    in a run when the Gaia archive did not answer)."""
+    from app.services.pipeline import autophot as ap
+    try:
+        text = (ap.tdir(tid, must=False) / 'web_run.log').read_text(errors='replace')
+    except Exception:
+        return {}
+    m = GAIA_DOWN_RE.findall(text)
+    if not m:
+        return {}
+    why, bands = m[-1]
+    note = (f'its reference stars come from Gaia XP spectra, and the Gaia archive did not answer during this run '
+            f'({why[:80]}); Rerun once it is back')
+    return {b: note for b in bands.split()}
+
+
+def relaxed_note(p, rel_by_image):
+    """The w/o TS note of a point AutoPhOT could not align, told by its relaxed-alignment try: that try aligned the
+    template but its subtraction failed the check (e.g. AT2026afqt z, 2026-11-25: aligned, kernel flux scale off by
+    40% on a shallow frame with 5 stars) — not 'could not align'."""
+    q = rel_by_image.get(p.get('image'))
+    note = (q or {}).get('ts_note') or ''
+    if q and not q.get('ts') and note and not note.startswith(ALIGN_FAIL_NOTE) and note not in ('not subtracted', 'template alignment failed'):
+        return 'aligned only with relaxed checks, ' + (note[len('relaxed alignment: '):] if note.startswith('relaxed alignment: ') else note)
+    return p.get('ts_note')
+
+
 def skipped_name(target):
     return str(target).strip().upper().startswith('EP')
 
@@ -756,6 +787,7 @@ def details(row):
         out['problems'] = ap.run_problems(tid)
     except Exception:
         logger.exception('auto_phot: image status of %s', tid)
+    out['zp_notes'] = zp_notes(tid)
     return out
 
 
@@ -889,6 +921,10 @@ def run_target(night, target, telescope, frames, stop=None, stack_only=False):
                     if p.get('ts') and not ok:
                         p['ts'], p['ts_note'] = False, why
                 phot = better_ts(phot, rel, set(unaligned))
+                rel_by = {q['image']: q for q in rel}
+                for p in phot:
+                    if not p.get('ts') and p.get('filter') in unaligned:
+                        p['ts_note'] = relaxed_note(p, rel_by)
             # a subtraction that failed its check (or a TS run that gave nothing): measure without TS and use that
             bad = [p for p in phot if not p.get('ts')]
             if template and (bad or not phot):
