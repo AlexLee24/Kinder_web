@@ -516,8 +516,13 @@ function _renderAutoPlan() {
         html += '<div class="pa-auto-plan-head">' + (isAutoExposure ? 'Total ' + _fmtSec(total) + ' at the telescope · ' : 'Not auto: the filters below are your own · ') +
             'highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr + '</div>';
         const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
-        const from = f => f.from === 'own' ? day(f.mjd) + ' · ' + (f.source || '')
-            : f.from === 'other' ? f.filter + ' ' + day(f.mjd) + ' (none in this filter)' : 'typed above';
+        const src = f => day(f.mjd) + ' \u00b7 ' + (f.source || '');
+        const from = f => ({
+            own: src(f),
+            bright: 'brightest in 3 days: ' + f.filter + ' ' + src(f),
+            own_old: src(f) + ' (nothing in 3 days)',
+            other: f.filter + ' ' + src(f) + ' (nothing in 3 days or in this filter)',
+        })[f.from] || 'typed above';
         html += '<table class="pa-auto-tbl"><thead><tr><th scope="col">Filter</th><th scope="col">Mag</th><th scope="col">From</th><th scope="col">Frames</th><th scope="col">S/N</th></tr></thead><tbody>' +
             AUTO_ALL.map(sf => {
                 const f = res.filters[sf];

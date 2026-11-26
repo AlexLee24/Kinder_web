@@ -4,9 +4,9 @@ Each filter gets CASTOR's Simple-mode plan (castorCLI.plan.compute_plan, the cal
 the frame length and count that reach the target's S/N (default 20) for the magnitude it had last, at the hour
 tonight the target stands highest at Lulin.
 
-Magnitudes: each filter its own latest detection on the target's Transient page; a filter without one, the latest
-detection in any filter; a target with no detection at all, the magnitude typed on the target (no magnitude at all:
-no auto exposure).
+Magnitudes (from the target's Transient page, detections only): each filter its latest detection of the last 3 days,
+else the brightest detection of those 3 days in any filter; only with nothing in 3 days, going back: the filter's
+latest, else the latest in any filter; with no photometry, the magnitude typed on the target (none: no auto exposure).
 
 Filters: the ones picked on the target (auto_plan, e.g. 'up,gp,rp,ip,zp'; default all five), however long they take;
 a plan over MAX_TOTAL_S is flagged, with what g + r or r alone would take. Every filter is computed, so the form can
@@ -79,23 +79,18 @@ def _obj_id(cur, name):
 
 
 def latest_detections(name):
-    """{band: {'mag', 'mjd', 'filter', 'source'}} of the target's latest detection per filter on its Transient page,
-    and '*': the latest in any filter. Detections only (a limit has no error)."""
+    """The target's detections on its Transient page, newest first: [{'mag', 'mjd', 'filter', 'source'}]. Detections
+    only (a limit has no error)."""
     from app.db import get_db_connection
     with get_db_connection() as conn:
         cur = conn.cursor()
         oid = _obj_id(cur, name)
         if oid is None:
-            return {}
+            return []
         cur.execute('SELECT mag, "MJD", filter, source FROM transient.photometry WHERE obj_id = %s AND mag IS NOT NULL '
                     'AND mag > 0 AND mag_err IS NOT NULL ORDER BY "MJD" DESC', (oid,))
         rows = cur.fetchall()
-    out = {}
-    for mag, mjd, f, src in rows:
-        d = {'mag': float(mag), 'mjd': float(mjd), 'filter': f, 'source': src or ''}
-        out.setdefault('*', d)
-        out.setdefault(_band(f), d)
-    return out
+    return [{'mag': float(m), 'mjd': float(t), 'filter': f, 'source': src or ''} for m, t, f, src in rows]
 
 
 def latest_by_object(names):
@@ -113,9 +108,23 @@ def latest_by_object(names):
         return {n: float(m) for n, m in cur.fetchall()}
 
 
-def magnitudes(name, typed_mag=None, detections=None):
-    """{script filter: {'mag', 'from'}} for the five filters; 'from' says where the magnitude came from."""
-    det = latest_detections(name) if detections is None else detections
+RECENT_DAYS = 3               # 'recent' photometry: the last 3 days
+
+
+def _mjd_now():
+    return datetime.now(timezone.utc).timestamp() / 86400 + 40587
+
+
+def magnitudes(name, typed_mag=None, detections=None, now_mjd=None):
+    """{script filter: {'mag', 'from', 'filter', 'mjd', 'source'}} for the five filters. Per filter:
+    'own'     its latest detection in that filter within RECENT_DAYS;
+    'bright'  else the brightest detection in any filter within RECENT_DAYS;
+    only with no detection at all in RECENT_DAYS, going back: 'own_old' its latest in that filter, else 'other' the
+    latest in any filter; else 'typed' the magnitude typed on the target. Nothing: NoMagnitude."""
+    det = latest_detections(name) if detections is None else list(detections)
+    det.sort(key=lambda d: -d['mjd'])
+    now = _mjd_now() if now_mjd is None else now_mjd
+    recent = [d for d in det if d['mjd'] >= now - RECENT_DAYS]
     typed = None
     try:
         typed = float(str(typed_mag).lstrip('>').strip()) if typed_mag not in (None, '') else None
@@ -123,14 +132,20 @@ def magnitudes(name, typed_mag=None, detections=None):
         typed = None
     out = {}
     for sf, b, _ in BANDS:
-        d = det.get(b) or det.get('*')
-        if d:
-            out[sf] = {'mag': d['mag'], 'from': 'own' if det.get(b) else 'other', 'filter': d['filter'], 'mjd': d['mjd'],
-                       'source': d['source']}
+        mine = [d for d in det if _band(d['filter']) == b]
+        if recent:
+            own = [d for d in recent if _band(d['filter']) == b]
+            d, how = (own[0], 'own') if own else (min(recent, key=lambda x: x['mag']), 'bright')
+        elif mine:
+            d, how = mine[0], 'own_old'
+        elif det:
+            d, how = det[0], 'other'
         elif typed is not None:
             out[sf] = {'mag': typed, 'from': 'typed'}
+            continue
         else:
             raise NoMagnitude(f'{name} has no photometry on Kinder: enter its magnitude to use auto exposure.')
+        out[sf] = {'mag': d['mag'], 'from': how, 'filter': d['filter'], 'mjd': d['mjd'], 'source': d['source']}
     return out
 
 
@@ -226,12 +241,12 @@ WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot 
        'below_horizon': 'not above the horizon tonight'}
 
 
-def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=None, detections=None):
+def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=None, detections=None, now_mjd=None):
     """The target's plan for tonight for the filters picked (choice). Raises NoMagnitude when there is nothing to
     compute it from."""
     snr = float(snr or DEFAULT_SNR)
     picked = selection(choice)
-    mags = magnitudes(name, typed_mag, detections)
+    mags = magnitudes(name, typed_mag, detections, now_mjd)
     when, alt = best_time(ra, dec, day)
     filters, notes = {}, []
     for sf, b, cf in BANDS:
@@ -256,7 +271,7 @@ def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=Non
 
 def _latest(mags):
     """The newest detection the plan was computed from ({'mag', 'filter', 'mjd', 'source'}), None when typed."""
-    ds = [m for m in mags.values() if m.get('from') in ('own', 'other') and m.get('mjd') is not None]
+    ds = [m for m in mags.values() if m.get('from') != 'typed' and m.get('mjd') is not None]
     if not ds:
         return None
     d = max(ds, key=lambda m: m['mjd'])
