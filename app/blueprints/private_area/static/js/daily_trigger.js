@@ -721,7 +721,7 @@ function renderFilterRows() {
     });
 
     if (obsFilters.length > 0) {
-        if (totalContainer) totalContainer.style.display = 'block';
+        if (totalContainer) totalContainer.style.display = 'inline';
         if (totalText) totalText.innerText = totalSec + 's (' + (totalSec / 60).toFixed(1) + ' min)';
     } else {
         if (totalContainer) totalContainer.style.display = 'none';
