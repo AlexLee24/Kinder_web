@@ -1332,11 +1332,41 @@ body::before {
     grid-template-rows: repeat(var(--rows, 6), auto); gap: 4px 16px; white-space: nowrap; }
 .pa-lcf-menu label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--kw-text-secondary, #ccc); }
 .pa-lcf-menu .pa-lcf-all { grid-column: 1 / -1; grid-row: auto; display: flex; gap: 10px; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+/* layout B: two tiers. Top: target | tonight | survey; bottom: exposure plan (two columns wide) | light curve */
+.pa-target-grid { grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 0.68fr) minmax(0, 1.32fr); grid-template-areas: "tgt vis sky" "exp exp lc"; gap: 14px 20px; }
+.pa-tw-form, .pa-target-preview, .pa-tp-row { display: contents; }
+.pa-tw-target { grid-area: tgt; overflow: hidden; }
+.pa-tw-exp { grid-area: exp; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; }
+.pa-tp-row > .pa-tp-sec:first-child, .pa-target-preview > .pa-tp-empty { grid-area: vis; }
+.pa-tp-row > .pa-tp-sec:last-child { grid-area: sky; }
+.pa-tp-lcsec { grid-area: lc; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; }
+.pa-tp-row > .pa-tp-sec { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.pa-tp-vis { flex: 1; min-height: 0; }
+.pa-tp-vis svg { width: 100%; height: 100%; max-height: none; }
+.pa-target-preview .pa-tp-sky .dtw-sky { width: min(100%, 26vh); }
+.pa-target-preview .pa-tp-sky .dtw-sky :is(img, .dta-thumb) { max-width: 100%; }
+.pa-target-box .pa-auto-plan table { width: 100%; }
+/* the bottom tier is wide: plan table on the left, the plan pick and the exposures on the right */
+.pa-tw-exp { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(240px, 1fr); gap: 6px 20px; align-content: start; }
+.pa-tw-exp .pa-auto-plan { display: contents; }
+.pa-tw-exp .pa-auto-exp-container:not([style*="none"]) { display: contents !important; }
+.pa-tw-exp .pa-auto-plan[hidden] { display: none; }
+.pa-tw-exp > .pa-auto-exp-container > *, .pa-tw-exp .pa-auto-plan > * { grid-column: 1; }
+.pa-tw-exp .pa-auto-choose { grid-column: 2; grid-row: 1 / span 4; align-self: start; margin: 0; }
+.pa-tw-exp > .pa-obs-config { grid-column: 2; grid-row: 5 / span 4; }
+.pa-tw-exp:not(:has(.pa-auto-choose)) > .pa-obs-config { grid-row: 1 / span 6; }
+.pa-target-box .pa-auto-tbl td, .pa-target-box .pa-auto-tbl th { padding-top: 1px; padding-bottom: 1px; }
+.pa-target-box .pa-auto-tbl input.pa-auto-mag, .pa-target-box .pa-auto-tbl input { padding: 1px 6px; height: 22px; box-sizing: border-box; }
+.pa-target-box .pa-filter-subtotal { white-space: nowrap; width: auto; font-size: 0.8rem; }
+.pa-target-box .pa-filter-row select, .pa-target-box .pa-filter-row input { height: 26px; box-sizing: border-box; }
+.pa-target-box .pa-auto-exp-row { position: relative; }
 @media (max-width: 1100px), (max-height: 640px) {
     .pa-modal-box.pa-target-box { height: auto; max-height: 94vh; overflow-y: auto; }
     .pa-target-grid, .pa-tw-form { grid-template-columns: minmax(0, 1fr); }
     .pa-tw-target { border: 0; padding: 0; }
-    .pa-target-preview { border: 0; padding: 0; grid-template-rows: auto 360px; }
+    .pa-target-grid { grid-template-areas: "tgt" "vis" "sky" "exp" "lc"; grid-template-rows: none; }
+    .pa-tp-lcsec { height: 380px; }
 }
 .pa-auto-badge { display: inline-block; margin-top: 2px; font-size: 0.7rem; color: #4ade80; }
 .pa-auto-badge.is-warn { color: #ffb74d; }
