@@ -1271,9 +1271,11 @@ body::before {
 .pa-tp-sec h4 { margin: 0 0 6px; font-size: 0.82rem; font-weight: 600; color: var(--kw-text-secondary, #bbb); }
 .pa-tp-astro { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.78rem; color: var(--kw-text-muted, #999); margin-bottom: 4px; }
 .pa-tp-astro b { color: #fff; font-weight: 600; font-family: var(--kw-font-mono, monospace); }
-.pa-tp-vis svg { width: 100%; max-width: 560px; max-height: 240px; height: auto; }
+.pa-tp-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.pa-tp-vis svg { width: 100%; height: auto; }
 .pa-tp-lc { min-height: 120px; }
-.pa-tp-sky { display: flex; gap: 12px; align-items: flex-start; }
+.pa-tp-sky .dtw-sky { margin: 0; width: 100%; }
+.pa-target-preview .pa-tp-sky .dtw-sky :is(img, .dta-thumb) { width: 100%; max-width: 100%; height: auto; aspect-ratio: 1; display: block; }
 .pa-tp-empty { margin: 0; font-size: 0.8rem; color: var(--kw-text-muted, #888); }
 @media (max-width: 980px) {
     .pa-target-grid { grid-template-columns: minmax(0, 1fr); }

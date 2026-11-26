@@ -1279,9 +1279,13 @@ function renderTable(telescope, targets) {
         if (t.auto_exposure && t.telescope !== 'LOT') {
             const ar = t.auto_result || {};
             const planName = (ar.selected || []).join(' ');
-            const warn = ar.error || (ar.too_long ? planName + ' over ' + Math.round((ar.max_total_s || 1800) / 60) + ' min' : '');
-            filterExpHTML += '<div class="pa-auto-badge' + (warn ? ' is-warn' : '') + '" title="' + escapeHtml(ar.error || ('CASTOR plan for ' + (ar.night || 'tonight'))) + '">AUTO · S/N ' +
-                escapeHtml(ar.snr || t.auto_snr || '') + (t.auto_snr ? '' : ' auto') + (planName ? ' · ' + escapeHtml(planName) : '') + (warn ? ' · ' + escapeHtml(ar.error ? 'no plan' : warn) : '') + '</div>';
+            const mins = ar.total_s != null ? Math.round(ar.total_s / 60) : null;
+            const tip = ar.error || ('CASTOR plan for the night of ' + (ar.night || 'tonight') + ': S/N ' + (ar.snr || '') +
+                (t.auto_snr ? '' : ' (automatic)') + (ar.too_long ? ', over ' + Math.round((ar.max_total_s || 1800) / 60) + ' min' : ''));
+            // one short line; amber (and the tooltip) says it runs long or has no plan
+            filterExpHTML += '<div class="pa-auto-badge' + (ar.error || ar.too_long ? ' is-warn' : '') + '" title="' + escapeHtml(ar.snr || ar.error ? tip : 'Planned at the next daily update (12:00)') + '">AUTO' +
+                (ar.error ? ' · no plan' : !ar.snr ? ' · not planned yet'
+                 : ' · S/N ' + escapeHtml(ar.snr) + (planName ? ' · ' + escapeHtml(planName) : '') + (mins != null ? ' · ' + mins + ' min' : '')) + '</div>';
         }
 
         let programBadge = '';

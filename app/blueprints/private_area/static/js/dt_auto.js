@@ -636,17 +636,20 @@
         renderDetail(null);                     // the target popout's light curve ids would clash
         selected = null;
         box.replaceChildren(
-            el('section', { class: 'pa-tp-sec', 'aria-label': 'Tonight from Lulin' }, el('h4', { text: 'Tonight from Lulin' }),
-                el('div', { class: 'pa-tp-astro', id: 'tpAstro' }),
-                el('div', { class: 'pa-tp-vis', id: 'tpVis' }, el('p', { class: 'pa-tp-empty', text: ra && dec ? 'Computing…' : 'Enter RA and Dec' }))),
+            // visibility and the survey image side by side, half each; the light curve under them
+            el('div', { class: 'pa-tp-row' },
+                el('section', { class: 'pa-tp-sec', 'aria-label': 'Tonight from Lulin' }, el('h4', { text: 'Tonight from Lulin' }),
+                    el('div', { class: 'pa-tp-astro', id: 'tpAstro' }),
+                    el('div', { class: 'pa-tp-vis', id: 'tpVis' }, el('p', { class: 'pa-tp-empty', text: ra && dec ? 'Computing…' : 'Enter RA and Dec' }))),
+                el('section', { class: 'pa-tp-sec', 'aria-label': 'Survey image' }, el('h4', { text: 'Survey, 60″' }),
+                    el('div', { class: 'pa-tp-sky' }, (ra && dec && skyFig(t)) || el('p', { class: 'pa-tp-empty', text: '—' })))),
             el('section', { class: 'pa-tp-sec', 'aria-label': 'Light curve' },
                 el('h4', {}, 'Light curve', name ? [' · ', el('a', { href: objUrl(name), target: '_blank', rel: 'noopener', text: 'Transient page' })] : null),
                 el('div', { class: 'pa-tp-lc' },
                     el('div', { id: 'telescopeToggles', style: 'display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;' }),
                     el('div', { id: 'tpLcPlot' }, el('p', { class: 'pa-tp-empty', text: name ? 'Loading the light curve…' : '—' })),
                     el('div', { id: 'photLegend', style: LEGEND_STYLE }))),
-            el('section', { class: 'pa-tp-sec', 'aria-label': 'Survey image' }, el('h4', { text: 'Survey, 60″ around the target' }),
-                el('div', { class: 'pa-tp-sky' }, (ra && dec && skyFig(t)) || el('p', { class: 'pa-tp-empty', text: '—' }))));
+            );
         if (ra && dec) previewVis(t, key);
         if (name) previewLc(t, key);
     }
