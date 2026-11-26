@@ -12,8 +12,8 @@
 .st-server-top b { font-size: 1rem; }
 .st-server-name { font-size: 0.8rem; color: var(--kw-text-secondary); }
 .st-server-state { font-size: 0.8rem; }
-.st-server-count { font-size: 0.76rem; color: var(--kw-text-tertiary, var(--kw-text-secondary)); }
-.st-tag { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600; }
+.st-server-count { font-size: max(0.76rem, 11px); color: var(--kw-text-tertiary, var(--kw-text-secondary)); }
+.st-tag { margin-left: auto; padding: 1px 8px; border-radius: 999px; font-size: max(0.68rem, 11px); font-weight: 600; }
 .st-tag-pref { display: none; background: var(--kw-accent); color: var(--color-accent-text, #111); }
 .st-tag-backup { background: rgba(255, 255, 255, 0.08); color: var(--kw-text-secondary); }
 .st-server input:checked + .st-server-body .st-tag-pref { display: inline-block; }
@@ -31,12 +31,12 @@
 .st-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; }
 .st-saved { margin-right: auto; font-size: 0.8rem; }
 .st-h3 { margin: 22px 0 6px; font-size: 0.95rem; }
-.st-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; font-size: 0.76rem; }
+.st-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; font-size: max(0.76rem, 11px); }
 .st-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .st-legend-sep { margin-left: 8px; font-weight: 600; }
 .st-table td, .st-table th { white-space: nowrap; }
 .st-table .st-c { text-align: center; width: 90px; }
 .st-table td.st-c .st-dot { vertical-align: middle; }
 .st-table th.st-c.is-pref { color: var(--kw-accent); }
-.st-id { display: block; font-size: 0.72rem; color: var(--kw-text-secondary); font-family: var(--kw-font-mono); }
+.st-id { display: block; font-size: max(0.72rem, 11px); color: var(--kw-text-secondary); font-family: var(--kw-font-mono); }
 .st-now { display: inline-flex; align-items: center; gap: 7px; font-size: 0.82rem; }

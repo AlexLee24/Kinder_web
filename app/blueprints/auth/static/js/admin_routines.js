@@ -103,7 +103,7 @@
         if (!l) return '<span class="bot-muted">—</span>';
         const at = l.finished_at || l.started_at;
         const secs = l.secs != null ? l.secs : secsBetween(l.started_at, l.finished_at);
-        const mark = l.ok === false ? '<b class="bot-bad">✗</b> ' : l.ok ? '<b class="bot-good">✓</b> ' : '';
+        const mark = l.ok === false ? '<b class="bot-bad" aria-label="Failed"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></b> ' : l.ok ? '<b class="bot-good" aria-label="OK"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></b> ' : '';
         return mark + esc(both(at)) + '<small>' + esc(rel(at)) + (secs != null && l.finished_at ? ' · ' + esc(dur(secs)) : '') +
             (l.manual ? ' · Run now' : '') + '</small>';
     }
@@ -151,7 +151,7 @@
         ((l && l.steps) || []).forEach((s) => { done[s.name] = s; });
         return '<ol class="rt-steps">' + r.steps.map((name) => {
             const s = done[name];
-            const st = !s ? '' : s.ok === false ? '<b class="bot-bad">✗</b>' : s.ok ? '<b class="bot-good">✓</b>' : '<span class="bot-muted">–</span>';
+            const st = !s ? '' : s.ok === false ? '<b class="bot-bad" aria-label="Failed"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></b>' : s.ok ? '<b class="bot-good" aria-label="OK"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></b>' : '<span class="bot-muted">–</span>';
             return '<li>' + st + '<span>' + esc(name) + '</span>' + (s ? '<small>' + esc((s.secs != null ? dur(s.secs) + ' · ' : '') + (s.message || '')) + '</small>' : '') + '</li>';
         }).join('') + '</ol>';
     }
