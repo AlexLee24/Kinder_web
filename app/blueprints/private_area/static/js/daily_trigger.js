@@ -515,7 +515,14 @@ function _autoSwitchTel(tel) {
     document.getElementById('obs-telescope').value = tel;
     autoCamera = '';
     toggleTelescopeUI(tel);
-    applyAutoExposure().then(() => { const p = document.getElementById('obs-program'); if (tel === 'LOT' && p && !p.value) p.focus(); });
+    applyAutoExposure().then(() => {
+        // the switch is only in this form until it is saved: say so, on the hint and on the Save button
+        const hint = document.getElementById('auto-exp-hint');
+        if (hint) { hint.style.color = '#ffcf70'; hint.innerText = 'Not moved yet: pick a plan, then Save to move it to ' + tel + '.'; }
+        const label = document.getElementById('target-modal-submit-label');
+        if (label && !pendingSingleTrigger) label.textContent = 'Save · move to ' + tel;
+        const p = document.getElementById('obs-program'); if (tel === 'LOT' && p && !p.value) p.focus();
+    });
 }
 function _autoPick(f, on) {
     const set = new Set(autoSel);
