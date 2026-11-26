@@ -192,6 +192,39 @@ def test_unaligned_bands_are_tried_with_relaxed_alignment(tmp_path, fake, monkey
     assert runs == ['ts', 'relax'] and u['ts'] and u.get('relaxed') and r['status'] == 'done'
 
 
+def test_a_relaxed_alignment_that_fails_the_flux_check_says_so(tmp_path, fake, monkeypatch):
+    """AT2026afqt z, 2026-11-25: the relaxed try aligned the template, but the kernel flux scale was 40% off; the
+    note says that, not 'could not align'."""
+    _frame(tmp_path, 'AT2026afqt', '2026-11-16')
+    monkeypatch.setattr(svc, 'position', lambda t, f: (None, 47.9, -2.03))
+    monkeypatch.setattr(svc, 'choose_catalog', lambda ra, dec: 'pan_starrs')
+    monkeypatch.setattr(svc, 'choose_template', lambda ra, dec: 'legacy')
+    monkeypatch.setattr(svc, 'template_choices', lambda tid: {})
+    monkeypatch.setattr(svc, 'no_ts_reason', lambda tid, b: 'AutoPhOT could not align the Legacy Survey template')
+    monkeypatch.setattr(svc, '_frame_pngs', lambda *a: [])
+    monkeypatch.setattr(svc, 'ensure_workspace', lambda night, target, tel, ra, dec, cat, stack=True, bands=None, template=None,
+                        force=None, relax=False: svc.workspace_name(night, target, tel, svc._suffix(template, force, relax)))
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'add_files', lambda *a, **k: {})
+    monkeypatch.setattr(svc, '_run_and_wait', lambda *a, **k: {'status': 'done'})
+    pt = lambda ts, **k: {'filter': 'z', 'mjd': 1, 'mag': 16.2, 'err': .1, 'lim': 16.9, 'snr': 9.8, 'det': True, 'veto': '',   # noqa: E731
+                          'image': 'img_z', 'ts': ts, 'ts_note': '' if ts else 'not subtracted', **k}
+    monkeypatch.setattr(svc, '_points', lambda tid: [pt(True, fscale_disc=40.3, snr=1.7)] if tid.endswith('_relaxTS') else [pt(False)])
+    svc.run_night(NIGHT, root=tmp_path)
+    z = fake.rows[(NIGHT, 'AT2026afqt', 'SLT')]['phot'][0]
+    assert not z['ts'] and z['ts_note'] == 'aligned only with relaxed checks, kernel flux scale off by 40%'
+
+
+def test_a_band_left_uncalibrated_by_a_gaia_outage_says_why(tmp_path, monkeypatch):
+    import app.services.pipeline.autophot as ap
+    monkeypatch.setattr(ap, 'tdir', lambda tid, must=True: tmp_path)
+    assert svc.zp_notes('x') == {}
+    (tmp_path / 'web_run.log').write_text('[web] Gaia archive not answering (HTTP 503): u not calibrated in this run '
+                                          '(measured, no zero point)\n')
+    notes = svc.zp_notes('x')
+    assert list(notes) == ['u'] and 'Gaia archive did not answer' in notes['u']
+
+
 def test_a_relaxed_subtraction_needs_a_close_flux_scale():
     ok, why = svc.relaxed_check({'ts': True, 'fscale_disc': 15.0})
     assert not ok and 'relaxed alignment' in why
