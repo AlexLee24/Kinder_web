@@ -68,7 +68,7 @@
 .compact-classification {
     padding: 2px var(--spacing-sm);
     border-radius: 10px;
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     background: var(--glass-bg);
     color: rgba(255, 255, 255, 0.8);
     min-width: 60px;
@@ -108,25 +108,25 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     font-weight: var(--font-weight-semibold);
     color: white;
 }
 
 .tag-indicator.object {
-    background: linear-gradient(45deg, var(--inbox-color), #388e3c);
+    background: var(--inbox-color);
 }
 
 .tag-indicator.followup {
-    background: linear-gradient(45deg, var(--followup-color), var(--blue-dark));
+    background: var(--followup-color);
 }
 
 .tag-indicator.finished {
-    background: linear-gradient(45deg, var(--finished-color), var(--orange-dark));
+    background: var(--finished-color);
 }
 
 .tag-indicator.snoozed {
-    background: linear-gradient(45deg, var(--snoozed-color), var(--purple-dark));
+    background: var(--snoozed-color);
 }
 
 /* Compact Action Buttons */

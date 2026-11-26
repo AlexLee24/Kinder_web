@@ -12,7 +12,7 @@
 .ip-page .form-group label {
     display: block;
     margin-bottom: 6px;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: var(--kw-text-secondary);
 }
 
@@ -339,13 +339,13 @@
     text-overflow: ellipsis;
 }
 
-.db-dd-meta { font-size: 0.75rem; color: rgba(255,255,255,0.4); white-space: nowrap; }
-.db-dd-add { flex-shrink: 0; font-size: 0.75rem; color: var(--kw-accent); opacity: 0.8; }
+.db-dd-meta { font-size: max(0.75rem, 11px); color: rgba(255,255,255,0.4); white-space: nowrap; }
+.db-dd-add { flex-shrink: 0; font-size: max(0.75rem, 11px); color: var(--kw-accent); opacity: 0.8; }
 
 .db-dd-internal {
     flex-basis: 100%;
     margin-top: -4px;
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     font-style: italic;
     color: rgba(255, 165, 77, 0.7);
     white-space: nowrap;
@@ -354,3 +354,6 @@
 }
 
 .db-dropdown-msg { padding: 10px 14px; font-size: 0.82rem; color: rgba(255,255,255,0.35); text-align: center; }
+/* the "make a static plot" button sits with its message (the page-bar one is a screen away on a phone) */
+.mobile-only-warning .ip-static-here { display: flex; width: 100%; margin-top: 10px; }
+@media (pointer: coarse) { .btn-remove { min-width: 40px; min-height: 40px; } }

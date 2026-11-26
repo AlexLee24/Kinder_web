@@ -112,6 +112,7 @@
     'archive': '<rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
     'bolt': '<path d="M13 3v7h6l-8 11v-7H5z"/>',
     'robot': '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M10 16h4M3 12v3M21 12v3"/>',
+    'dots': '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     'chevron-down': '<path d="m6 9 6 6 6-6"/>',
     'arrow-down': '<path d="m6 9 6 6 6-6"/>',
     'upload': '<path d="M12 5v14M5 12h14"/>',
@@ -131,15 +132,36 @@
     {% for gkey, gic, glabel, gneed, vs in groups if allowed(gneed) %}
     {{ _link(vs[0][0], 'is-on' if gkey == ns.grp and key == ns.sec else '', 'role="menuitem"') }}>{{ ic(gic) }}<span>{{ glabel }}{% if is_ext(vs[0][0]) %} ↗{% endif %}</span></a>
     {% endfor %}
-    {% if key == 'about' %}<div data-pwa-install hidden><a href="#" role="menuitem">{{ ic('download') }}<span>Install Kinder app</span></a></div>
-    {# Phones: the bottom bar has no Settings tab, so it sits here (and in the account menu) #}
-    <a href="/settings" role="menuitem" class="sh-phone-only{% if ns.sec == 'settings' %} is-on{% endif %}">{{ ic('settings') }}<span>Settings</span></a>{% endif %}
+    {% if key == 'about' %}<div data-pwa-install hidden><a href="#" role="menuitem">{{ ic('download') }}<span>Install Kinder app</span></a></div>{% endif %}
+</div>
+{% endmacro %}
+
+{# Phones: the bottom bar is Home · Transients · Triggers · Tools · More. More holds Planning, Lab (less Triggers),
+   About and Settings, each under its own heading in one sheet. #}
+{% set more_keys = ['planning', 'lab', 'about'] %}
+{% set on_more = (ns.sec in more_keys and ns.grp != 'triggers') or ns.sec == 'settings' %}
+{% macro _more() %}
+<div class="sh-rail-item sh-phone-only sh-rail-more" data-sh-sec="more">
+    <a href="#" class="sh-rail-btn{% if on_more %} is-on{% endif %}" aria-haspopup="menu" data-sh-menu-only{% if on_more %} aria-current="page"{% endif %}>
+        {{ ic('dots') }}<span>More</span>
+    </a>
+    <div class="sh-fly" role="menu">
+        {% for key, icon, label, href, need, groups in nav + nav_end if key in more_keys and allowed(need) %}
+        <div class="sh-fly-h">{{ label }}</div>
+        {% for gkey, gic, glabel, gneed, vs in groups if allowed(gneed) and gkey != 'triggers' %}
+        {{ _link(vs[0][0], 'is-on' if gkey == ns.grp and key == ns.sec else '', 'role="menuitem"') }}>{{ ic(gic) }}<span>{{ glabel }}{% if is_ext(vs[0][0]) %} ↗{% endif %}</span></a>
+        {% endfor %}
+        {% endfor %}
+        {#- Settings and installing the app follow the About links (as they did in the About sheet) -#}
+        <a href="/settings" role="menuitem"{% if ns.sec == 'settings' %} class="is-on"{% endif %}>{{ ic('settings') }}<span>Settings</span></a>
+        <div data-pwa-install hidden><a href="#" role="menuitem">{{ ic('download') }}<span>Install app</span></a></div>
+    </div>
 </div>
 {% endmacro %}
 
 {% macro _rail_item(key, icon, label, href, groups, cls='') %}
 <div class="sh-rail-item{% if cls %} {{ cls }}{% endif %}" data-sh-sec="{{ key }}">
-    <a href="{{ href or '#' }}" class="sh-rail-btn{% if key == ns.sec %} is-on{% elif key == 'about' and ns.sec == 'settings' %} is-on-phone{% endif %}"{% if groups %} aria-haspopup="menu"{% endif %}{% if not href %} data-sh-menu-only{% endif %}{% if key == ns.sec %} aria-current="page"{% endif %}>
+    <a href="{{ href or '#' }}" class="sh-rail-btn{% if key == ns.sec %} is-on{% endif %}"{% if groups %} aria-haspopup="menu"{% endif %}{% if not href %} data-sh-menu-only{% endif %}{% if key == ns.sec %} aria-current="page"{% endif %}>
         {{ ic(icon) }}<span>{{ label }}</span>
     </a>
     {% if groups %}{{ _flyout(label, groups, key) }}{% endif %}
@@ -149,12 +171,19 @@
 {% macro rail() %}
 <div class="sh-rail" role="navigation" aria-label="Sections">
     {% for key, icon, label, href, need, groups in nav if allowed(need) %}
-    {{ _rail_item(key, icon, label, href, groups if groups|length > 1 else []) }}
+    {{ _rail_item(key, icon, label, href, groups if groups|length > 1 else [], 'sh-desk-only' if key in more_keys else '') }}
+    {% if key == 'transients' and _member %}
+    {#- Phones: Triggers gets its own tab (its three pages switch in the page bar) -#}
+    <div class="sh-rail-item sh-phone-only" data-sh-sec="triggers">
+        <a href="/daily_trigger" class="sh-rail-btn{% if ns.grp == 'triggers' %} is-on{% endif %}"{% if ns.grp == 'triggers' %} aria-current="page"{% endif %}>{{ ic('send') }}<span>Triggers</span></a>
+    </div>
+    {% endif %}
     {% endfor %}
     <span class="sh-rail-sp"></span>
     {% for key, icon, label, href, need, groups in nav_end if allowed(need) %}
     {{ _rail_item(key, icon, label, href, groups, 'sh-rail-' ~ key) }}
     {% endfor %}
+    {{ _more() }}
 </div>
 {% endmacro %}
 

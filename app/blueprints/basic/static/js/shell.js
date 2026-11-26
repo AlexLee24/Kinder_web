@@ -26,8 +26,9 @@
         if (was) return;
         item.classList.add('is-open');
         if (mq.matches) body.classList.add('sh-sheet-open');
-        var first = item.querySelector('.sh-fly a.is-on') || item.querySelector('.sh-fly a');
-        if (first) first.focus({ preventScroll: true });
+        // focus goes into the sheet (keyboard users tab on from there) without drawing a ring on a tile that looks chosen
+        var fly = item.querySelector('.sh-fly');
+        if (fly) { fly.setAttribute('tabindex', '-1'); fly.focus({ preventScroll: true }); }
     }
     document.querySelectorAll('.sh-rail-item').forEach(function (item) {
         var btn = item.querySelector('.sh-rail-btn');
@@ -230,7 +231,8 @@
         }
         update();
     }
-    document.querySelectorAll('.sh-pagebar :is(.kw-tabbar, .kw-seg, .sh-views), .sh-top .sh-tabs').forEach(scrollableStrip);
+    // also the admin menu, a sideways row of pills on phones: it opens scrolled to the page you are on
+    document.querySelectorAll('.sh-pagebar :is(.kw-tabbar, .kw-seg, .sh-views), .sh-top .sh-tabs, .admin-nav').forEach(scrollableStrip);
 
     // ── 5) Leaving a page with an Aladin sky view in an iframe (object page, ePESSTO++): Aladin Lite 3.8.2
     //    inside an iframe keeps the tab from receiving the next page — it stays on "loading" forever. Sending

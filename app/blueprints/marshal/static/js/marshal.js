@@ -620,7 +620,7 @@ function generateCompactView() {
                 <span class="compact-classification ${escapeHtml(obj.classification.toLowerCase().replace(' ', '-'))}">${escapeHtml(obj.classification)}</span>
                 <span class="compact-coords">${formattedRA}, ${formattedDec}</span>
                 ${obj.magnitude ? `<span class="compact-magnitude">m=${parseFloat(obj.magnitude).toFixed(1)}</span>` : ''}
-                ${obj.brightest_mag ? `<span class="compact-magnitude" title="Brightest Mag">BM=${parseFloat(obj.brightest_mag).toFixed(1)}</span>` : ''}
+                ${obj.brightest_mag ? `<span class="compact-magnitude" title="Brightest mag">BM=${parseFloat(obj.brightest_mag).toFixed(1)}</span>` : ''}
                 ${obj.brightest_abs_mag ? `<span class="compact-magnitude" title="Brightest Abs Mag">M=${parseFloat(obj.brightest_abs_mag).toFixed(1)}</span>` : ''}
                 ${obj.redshift ? `<span class="compact-redshift">z=${parseFloat(obj.redshift).toFixed(3)}</span>` : ''}
             </div>
@@ -700,7 +700,7 @@ function generateCardsView() {
                     </div>
                     
                     <div class="info-item">
-                        <span>Brightest Mag = ${escapeHtml(obj.brightest_mag || '---')}</span>
+                        <span>Brightest mag = ${escapeHtml(obj.brightest_mag || '---')}</span>
                     </div>
 
                     <div class="info-item">

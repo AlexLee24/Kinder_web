@@ -50,13 +50,13 @@
     right: 12px;
     transform: translateY(-50%);
     color: var(--kw-text-muted);
-    font-size: 0.72rem;
+    font-size: max(0.72rem, 11px);
     pointer-events: none;
 }
 /* Calculation Goal: Advanced mode's segmented control (.etc-segmented in etc.css), drawn
    with Kinder's tokens since this panel is outside .castor-etc. Both choices stay in
    view and either is one click. */
-.etc-simple-label { font-size: 0.78rem; color: var(--kw-text-secondary); }
+.etc-simple-label { font-size: max(0.78rem, 11px); color: var(--kw-text-secondary); }
 .etc-simple-seg {
     display: flex;
     gap: 2px;
@@ -84,14 +84,14 @@
 .etc-simple-seg label:hover span { color: var(--kw-text-primary); }
 .etc-simple-seg input:checked + span { background: rgba(255, 255, 255, 0.15); color: var(--kw-text-white); }
 .etc-simple-seg input:focus-visible + span { box-shadow: var(--kw-focus-ring); }
-.etc-simple-form small { font-size: 0.74rem; }
+.etc-simple-form small { font-size: max(0.74rem, 11px); }
 .etc-simple-caveat {
     margin: -4px 0 14px;
     padding: 8px 12px;
     border-radius: var(--kw-radius-md);
     background: rgba(255, 214, 10, 0.08);
     color: var(--kw-text-secondary);
-    font-size: 0.76rem;
+    font-size: max(0.76rem, 11px);
     line-height: 1.45;
 }
 .etc-simple-when { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
@@ -139,7 +139,7 @@
 .etc-simple-plan {
     margin: 6px 0 4px;
     font-size: clamp(2.2rem, 5vw, 3.4rem);
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.05;
     color: var(--kw-accent);
     font-variant-numeric: tabular-nums;
@@ -169,7 +169,7 @@
 .etc-simple-table tr.is-rec td { background: var(--kw-accent-dim); color: var(--kw-text-white); }
 .etc-simple-table tr.is-rec td:first-child { box-shadow: inset 3px 0 0 var(--kw-accent); }
 .etc-simple-more { margin-top: 10px; }
-.etc-simple-foot { margin: 14px 0 0; color: var(--kw-text-muted); font-size: 0.76rem; line-height: 1.5; }
+.etc-simple-foot { margin: 14px 0 0; color: var(--kw-text-muted); font-size: max(0.76rem, 11px); line-height: 1.5; }
 
 /* A wide answer panel: the plan and tonight's conditions on the left, the other options beside them. */
 @container (min-width: 760px) {
@@ -220,3 +220,6 @@
     .etc-simple-result .kw-kpi { padding: 12px; }
     .etc-simple-table th, .etc-simple-table td { padding: 9px 8px; }
 }
+
+/* phone: the date-time field needs the full width to show its value */
+@media (max-width: 480px) { .etc-simple-when { grid-template-columns: 1fr; } }

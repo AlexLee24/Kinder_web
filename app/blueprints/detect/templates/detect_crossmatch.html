@@ -6,22 +6,22 @@
     <style>
         .xm-page .kw-lead { max-width: 920px; }
         .xm-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
-        .xm-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.74rem; color: var(--kw-text-secondary); }
+        .xm-form label { display: flex; flex-direction: column; gap: 4px; font-size: max(0.74rem, 11px); color: var(--kw-text-secondary); }
         .xm-form .kw-input { min-height: 38px; }
         .xm-form .xm-wide { grid-column: span 2; }
         .xm-opts { margin-top: 12px; }
         .xm-lens-cat { white-space: nowrap; }
-        .xm-lens-cat small, .xm-lens-photo { font-size: 0.74rem; color: var(--kw-text-secondary); }
+        .xm-lens-cat small, .xm-lens-photo { font-size: max(0.74rem, 11px); color: var(--kw-text-secondary); }
         .xm-opts summary { cursor: pointer; font-size: 0.8rem; color: var(--kw-text-secondary); }
         .xm-opts .xm-form { margin-top: 10px; }
-        .xm-hint { font-size: 0.74rem; color: var(--kw-text-muted); margin-top: 8px; }
+        .xm-hint { font-size: max(0.74rem, 11px); color: var(--kw-text-muted); margin-top: 8px; }
         .xm-where { margin: 16px 0; font-size: 0.85rem; color: var(--kw-text-secondary); }
         .xm-where b { font-family: var(--kw-font-mono, ui-monospace, monospace); color: var(--kw-text-white); }
         .xm-section { margin-top: 16px; }
         .xm-section h2 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 0.95rem; }
-        .xm-section h2 small { font-size: 0.74rem; font-weight: 400; color: var(--kw-text-muted); }
+        .xm-section h2 small { font-size: max(0.74rem, 11px); font-weight: 400; color: var(--kw-text-muted); }
         .xm-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .xm-table td small { display: block; color: var(--kw-text-muted); font-size: 0.74rem; }
+        .xm-table td small { display: block; color: var(--kw-text-muted); font-size: max(0.74rem, 11px); }
         .xm-none { padding: 14px 16px; font-size: 0.82rem; color: var(--kw-text-muted); }
         .xm-err { color: #FF6B61; }
         .xm-mono { font-family: var(--kw-font-mono, ui-monospace, monospace); font-size: 0.8rem; }
@@ -50,7 +50,7 @@
             <div class="xm-form">
                 <label>Lens radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="lens_r" value="{{ opts.lens_r|round(2) }}"></label>
                 <label>DESI radius (″) <input class="kw-input" type="number" step="any" min="0" max="120" name="desi_r" value="{{ opts.desi_r|round(2) }}"></label>
-                <label>DESI max R<sub>e</sub> (0 = no cut) <input class="kw-input" type="number" step="any" min="0" max="50" name="desi_re" value="{{ opts.desi_re|round(2) }}"></label>
+                <label><span>DESI max R<sub>e</sub> (0 = no cut)</span> <input class="kw-input" type="number" step="any" min="0" max="50" name="desi_re" value="{{ opts.desi_re|round(2) }}"></label>
                 <label>DESI ZWARN galaxies
                     <select class="kw-input" name="zwarn"><option value="">Leave out (default)</option>
                         <option value="1"{% if form.zwarn == '1' %} selected{% endif %}>Include</option></select></label>

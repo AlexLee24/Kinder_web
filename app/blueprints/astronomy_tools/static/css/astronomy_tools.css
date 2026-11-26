@@ -27,10 +27,10 @@
 .at-page .form-group,
 .cosmo-modal .form-group { display: flex; flex-direction: column; gap: 6px; }
 .at-page .form-group label,
-.cosmo-modal .form-group label { font-size: 0.78rem; color: var(--kw-text-secondary); }
+.cosmo-modal .form-group label { font-size: max(0.78rem, 11px); color: var(--kw-text-secondary); }
 .at-page .form-group :is(input, select),
 .cosmo-modal .form-group input { box-sizing: border-box; width: 100%; min-height: 40px; }
-.at-unit { color: var(--kw-text-muted); font-size: 0.85em; }
+.at-unit { color: var(--kw-text-muted); font-size: max(0.85em, 11px); }
 
 .at-required { color: #FF6B61; }
 
@@ -189,3 +189,4 @@
 
 /* the settings icon button must not make its panel head taller than the neighbouring one */
 .cosmo-settings-btn { margin: -6px -6px -6px 0; }
+@media (max-width: 860px) { .at-result-box:has(> .at-placeholder:only-child) { min-height: 64px; } }   /* phones: an empty result is a short hint, not a 150px box */

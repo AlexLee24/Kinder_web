@@ -376,7 +376,7 @@
         border-radius: 8px;
         margin: 20px 0 0 0;
         cursor: pointer;
-        font-weight: bold;
+        font-weight: 600;
         color: var(--kw-accent); /* Default primary-like color */
         transition: background 0.2s;
     }
@@ -442,15 +442,37 @@
     .od-info-actions { margin-left: 0; justify-content: flex-start; width: 100%; }
     .kw-panel.panel-card, .kw-panel.top-mini-panel { padding: 14px 14px; }
 
-    /* Photometry action buttons: horizontal scroll instead of wrap */
-    .phot-actions {
-        flex-wrap: nowrap !important;
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: 4px;
-    }
-    .phot-btn { flex-shrink: 0; }
-    .phot-header-top { flex-wrap: wrap; gap: 6px; }
+    /* Photometry on a phone: every button visible (3 a row, same width) instead of a sideways strip that
+       cut the last one in half; the title's date on its own quiet line; toggles as one row of halves */
+    .phot-header-top { flex-direction: column; align-items: stretch; gap: 10px; }
+    .phot-header-top h3 { flex-direction: column; align-items: flex-start; gap: 2px; white-space: normal; }
+    .phot-header-top .phot-date-chip { padding: 0; background: none; font-size: max(0.75rem, 11px); }
+    .phot-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .phot-toggle-label { justify-content: center; min-height: 36px; }
+    .phot-actions { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; overflow: visible; padding: 0; }
+    .phot-actions .phot-btn { width: 100%; min-width: 0; padding: 0 6px; }
+    /* Phase t0: label over a full-width row of field + Set + Discovery, all one height; the note under it */
+    .phot-phase { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+    .phot-phase-l { grid-column: 1 / -1; }
+    .phot-phase-input { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; }   /* 16px: iOS doesn't zoom */
+    .phot-phase .phot-btn { min-height: 44px; }
+    .phot-phase-note { grid-column: 1 / -1; white-space: normal; color: rgba(255,255,255,0.45); }
+    /* the plot is 380px tall on phones: the 420px box left an empty band above it */
+    #photometryPlotContainer { height: auto !important; min-height: 380px; }
+    /* Spectroscopy: title on its own line, toggles and actions as equal thirds */
+    .spec-header-top { flex-direction: column; align-items: stretch; gap: 10px; }
+    .spec-header-top .phot-toggles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .spec-header-top .action-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+    .spec-header-top .action-row .kw-btn { width: 100%; min-width: 0; padding: 0 6px; }
+    .spec-lines-fold > summary { min-height: 44px; display: flex; align-items: center; font-size: 0.85rem; }
+    .spec-lines-controls .spec-wave-control { border-left: 0; padding-left: 0; }
+    /* Sources: the empty save-status slot pushed the two buttons right; on a phone they are halves of one row,
+       the status (when there is one) on its own line above them */
+    #od-perm .perm-header-right { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; }
+    #od-perm .perm-header-right .perm-save-status { grid-column: 1 / -1; }
+    #od-perm .perm-header-right .perm-save-status:empty { display: none; }
+    #od-perm .perm-header-right .kw-btn { width: 100%; }
+    #od-perm .perm-header-left { width: 100%; }   /* it wraps to its own line on a phone: no stray divider */
 
     /* Detail list: compact font */
     .detail-item { font-size: 0.85rem; padding-bottom: 6px; }
@@ -471,7 +493,9 @@
         display: flex;
         margin: 0 var(--sh-page-x) 12px;
     }
-    body.od-body .sh-pagebar-c .od-jump { width: 100%; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); background: var(--color-surface-elevated); }
+    /* solid behind the bar: its scroll-fade edges and the glass would otherwise let the page show through */
+    body.od-body .sh-pagebar-c { background: rgb(26, 26, 30); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+    body.od-body .sh-pagebar-c .od-jump { width: 100%; background: rgb(26, 26, 30); }
     .object-detail-container :is(#commentsMiniPanel, #od-detect-img, #od-info, #od-images, #od-phot, #od-spec, #od-perm) {
         scroll-margin-top: calc(var(--kw-nav-h) + 64px);
     }

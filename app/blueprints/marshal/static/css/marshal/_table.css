@@ -35,7 +35,7 @@
     border: 1px solid var(--kw-border-med);
     background: var(--kw-surface);
     color: var(--kw-text-primary);
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     text-decoration: none;
     cursor: pointer;
     transition: background var(--kw-transition-fast);
@@ -47,7 +47,7 @@
     display: inline-block;
     padding: 2px 8px;
     border-radius: 999px;
-    font-size: 0.72rem;
+    font-size: max(0.72rem, 11px);
     font-weight: 600;
     background: rgba(255, 255, 255, 0.08);
     color: var(--kw-text-primary);
@@ -61,7 +61,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     font-weight: 600;
     color: var(--color-accent-text);
     margin: 0 auto;

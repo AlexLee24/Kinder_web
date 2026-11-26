@@ -12,7 +12,7 @@
 {% block bar_right %}
 <button class="kw-btn kw-btn-primary" id="generate-static-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    Generate Static Plot
+                    Generate static plot
                 </button>
 {% endblock %}
 
@@ -25,7 +25,7 @@
 
             <!-- Observatory Settings -->
             <section class="kw-panel settings-section">
-                <div class="kw-panel-head"><h2>Observatory Settings</h2></div>
+                <div class="kw-panel-head"><h2>Observatory settings</h2></div>
                 <div class="form-group">
                     <label for="date">Date</label>
                     <input type="date" id="date" />
@@ -71,13 +71,13 @@
                 </div>
                 <button class="kw-btn btn-add" id="add-target-btn" title="Add Target">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Add Target
+                    Add target
                 </button>
             </section>
 
             <!-- Display Options -->
             <section class="kw-panel settings-section">
-                <div class="kw-panel-head"><h2>Display Options</h2></div>
+                <div class="kw-panel-head"><h2>Display options</h2></div>
                 <div class="form-group-row interactive-only-options">
                     <label class="checkbox-label">
                         <input type="checkbox" id="show-sun" checked /> Sun
@@ -92,7 +92,8 @@
                 <!-- Warning shown only below the interactive-plot width (see the page CSS) -->
                 <div class="mobile-only-warning" style="display:none;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    Interactive plot is disabled for your screen size for better performance. Please generate a static plot instead.
+                    The interactive plot needs a wider screen. Make a static plot of these targets instead.
+                    <button type="button" class="kw-btn kw-btn-primary ip-static-here" onclick="document.getElementById('generate-static-btn').click()">Generate static plot</button>
                 </div>
             </section>
         </aside>
@@ -115,7 +116,7 @@
             <div id="details-section" style="display:none;">
                 <!-- Moon Info -->
                 <section class="kw-panel info-panel" id="moon-info-panel">
-                    <div class="kw-panel-head"><h2>Moon Info</h2></div>
+                    <div class="kw-panel-head"><h2>Moon info</h2></div>
                     <div class="info-item"><span class="info-label">Moon Phase</span><span id="info-moon-phase">--</span></div>
                     <div class="info-item"><span class="info-label">Moonrise (UTC)</span><span id="info-moonrise-utc">--</span></div>
                     <div class="info-item"><span class="info-label">Moonrise (Local)</span><span id="info-moonrise-local">--</span></div>
@@ -125,17 +126,17 @@
 
                 <!-- Target Details -->
                 <section class="kw-panel info-panel" id="target-info-panel">
-                    <div class="kw-panel-head"><h2>Target Details</h2></div>
+                    <div class="kw-panel-head"><h2>Target details</h2></div>
                     <div id="target-details-list"></div>
                 </section>
             </div>
 
             <section class="kw-panel" id="static-plot-container" style="display:none;">
                 <div class="kw-panel-head">
-                    <h2>Static Plot</h2>
+                    <h2>Static plot</h2>
                     <a id="static-plot-download" href="#" download="visibility_plot.jpg" class="kw-btn kw-btn-sm">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        Download Image
+                        Download image
                     </a>
                 </div>
                 <img id="static-plot-img" class="static-plot-img" alt="Static Observing Plot" />
@@ -250,9 +251,9 @@
         row.innerHTML = `
             <div class="target-color" style="background:${color}"></div>
             <input type="text" class="target-name" placeholder="Name" value="${escapeHtml(data.name)}" />
-            <input type="text" class="target-ra" placeholder="RA (hms/deg)" value="${escapeHtml(data.ra)}" />
-            <input type="text" class="target-dec" placeholder="Dec (dms/deg)" value="${escapeHtml(data.dec)}" />
-            <button class="btn-remove" title="Remove target">
+            <input type="text" class="target-ra" placeholder="RA" title="RA: hh:mm:ss or degrees" value="${escapeHtml(data.ra)}" />
+            <input type="text" class="target-dec" placeholder="Dec" title="Dec: ±dd:mm:ss or degrees" value="${escapeHtml(data.dec)}" />
+            <button class="btn-remove" title="Remove target" aria-label="Remove target">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         `;

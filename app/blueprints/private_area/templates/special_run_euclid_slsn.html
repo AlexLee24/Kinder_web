@@ -14,17 +14,23 @@
     .sr-bar { height: 8px; border-radius: 4px; background: var(--kw-border); overflow: hidden; margin: 10px 0; }
     .sr-bar > i { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width .4s; }
     .sr-log { max-height: 180px; overflow: auto; margin: 0; padding: 10px 12px; border-radius: var(--kw-radius-md);
-              background: rgba(0, 0, 0, .35); font: 0.78rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+              background: rgba(0, 0, 0, .35); font: max(0.78rem, 11px)/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
               color: var(--kw-text-secondary); white-space: pre-wrap; }
 
     /* display controls: sticky strip */
     .sr-ctl { position: sticky; top: 8px; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: end;
               backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-    .sr-f { display: flex; flex-direction: column; gap: 4px; min-width: 130px; font-size: 0.74rem; color: var(--kw-text-muted);
-            text-transform: uppercase; letter-spacing: .06em; }
+    .sr-f { display: flex; flex-direction: column; gap: 4px; min-width: 130px; font-size: max(0.74rem, 11px); color: var(--kw-text-muted); }
     .sr-f output { float: right; text-transform: none; color: var(--kw-text-secondary); font-variant-numeric: tabular-nums; }
     .sr-f input[type=range] { width: 150px; accent-color: var(--color-accent); }
     .sr-f .kw-select { min-width: 130px; }
+    /* phones: the strip is too tall to stick over the results; two even columns of full-width controls */
+    @media (max-width: 640px) {
+        .sr-ctl { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .sr-f { min-width: 0; }
+        .sr-f input[type=range], .sr-f .kw-select { width: 100%; min-width: 0; }
+        .sr-ctl > :not(.sr-f), .sr-f:has(.sr-checks), .sr-f:has(.kw-select) { grid-column: 1 / -1; }
+    }
     .sr-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
     .sr-checks label { display: inline-flex; gap: 5px; align-items: center; font-size: 0.82rem; color: var(--kw-text-secondary); text-transform: none; letter-spacing: 0; }
     #srPage[data-mode="stf"] .sr-manual, #srPage:not([data-mode="stf"]) .sr-stf { display: none; }
@@ -35,12 +41,12 @@
     .sr-card-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; padding: 10px 14px; font-size: 0.85rem; }
     .sr-card-body b { font-size: 0.95rem; color: var(--kw-text-white); }
     .sr-card-body a, .sr-panel figcaption a { color: var(--kw-accent); text-decoration: none; }
-    .sr-fits { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--kw-text-muted); }
+    .sr-fits { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: max(0.78rem, 11px); color: var(--kw-text-muted); }
     .sr-muted { color: var(--kw-text-muted); }
     .sr-panels { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: 2px; background: #000; }
     .sr-panel { position: relative; margin: 0; background: #000; aspect-ratio: 1; overflow: hidden; }
     .sr-panel canvas, .sr-panel img { display: block; width: 100%; height: 100%; object-fit: contain; }
-    .sr-panel figcaption { position: absolute; left: 8px; top: 6px; font-size: 0.75rem; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+    .sr-panel figcaption { position: absolute; left: 8px; top: 6px; font-size: max(0.75rem, 11px); color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
     .sr-panel.is-err::after { content: 'not available'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--kw-text-muted); font-size: .8rem; }
     .sr-ls.has-mark::before, .sr-ls.has-mark::after { content: ''; position: absolute; background: var(--color-accent); pointer-events: none; }
     .sr-ls.has-mark::before { left: calc(53.5%); top: calc(50% - 0.5px); width: 7%; height: 2px; }
@@ -64,9 +70,7 @@
      data-file="{{ url_for('private_area.special_run_euclid_slsn_file', slug='SLUG', fname='FNAME') }}"
      data-pixels="{{ url_for('private_area.special_run_euclid_slsn_pixels', slug='SLUG', band='BAND') }}"
      data-ls="{{ url_for('private_area.special_run_euclid_slsn_ls', slug='SLUG', key='KEY') }}">
-    <nav class="kw-tabbar" aria-label="Special Run">
-        <a class="kw-tab is-on" href="{{ url_for('private_area.special_run_euclid_slsn') }}" aria-current="page">Euclid-SLSN</a>
-    </nav>
+    {#- Euclid-SLSN / Lens Simulator switch: the shell view switch in the page bar -#}
 
     <div class="kw-page-head">
         <div>

@@ -55,7 +55,7 @@
 .ep-home-card-header h3 {   /* = .kw-panel-head h2 */
     margin: 0;
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0;
     color: var(--kw-text-white);
     display: flex;
@@ -64,7 +64,7 @@
 }
 
 .ep-card-tag {
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     font-weight: 400;
     color: var(--kw-text-muted);
     border: 1px solid var(--kw-hairline);
@@ -76,7 +76,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;   /* = .kw-field */
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: var(--kw-text-secondary);
 }
 
@@ -100,7 +100,7 @@
 .ep-home-hint:empty { display: none; }
 .ep-home-hint {
     min-height: 1.1rem;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: var(--ep-muted);
 }
 
@@ -134,8 +134,8 @@
     border-color: color-mix(in srgb, var(--kw-accent) 35%, transparent);
     background: color-mix(in srgb, var(--kw-accent) 5%, transparent);
 }
-.ep-live-room-id   { font-family: monospace; color: var(--kw-accent-hover); font-weight: 700; font-size: 0.85rem; }
-.ep-live-room-time { font-size: 0.74rem; color: var(--ep-soft); }
+.ep-live-room-id   { font-family: monospace; color: var(--kw-accent-hover); font-weight: 600; font-size: 0.85rem; }
+.ep-live-room-time { font-size: max(0.74rem, 11px); color: var(--ep-soft); }
 
 .ep-home-join-row {
     display: grid;
@@ -206,7 +206,7 @@
 }
 
 /* Mini */
-.ep-btn-mini { padding: 4px 9px; font-size: 0.76rem; }
+.ep-btn-mini { padding: 4px 9px; font-size: max(0.76rem, 11px); }
 
 /* ────────────────────────────────────────────────────────────
    WORKSPACE TOPBAR
@@ -254,9 +254,8 @@
 /* Page title (eP++) */
 .ep-page-title {
     font-size: 0.88rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--ep-accent);
-    letter-spacing: 0.5px;
     padding: 0 2px;
     white-space: nowrap;
 }
@@ -270,7 +269,7 @@
     border: 1px solid color-mix(in srgb, var(--kw-accent) 40%, transparent);
     background: color-mix(in srgb, var(--kw-accent) 10%, transparent);
     color: var(--kw-accent-hover);
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     font-weight: 600;
     white-space: nowrap;
 }
@@ -366,7 +365,7 @@
     font-style: italic;
 }
 .ep-type-summary {
-    font-size: 0.76rem;
+    font-size: max(0.76rem, 11px);
     color: rgba(255,255,255,0.55);
     text-align: right;
     line-height: 1.3;
@@ -404,8 +403,6 @@
     margin: 0;
     font-size: 0.82rem;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
     color: rgba(255,255,255,0.35);
 }
 
@@ -447,7 +444,7 @@
     left: 6px;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.6rem;
+    font-size: max(0.6rem, 11px);
     color: var(--ep-accent);
 }
 .ep-target-item.done {
@@ -468,7 +465,7 @@
 }
 .ep-target-item-type {
     margin-top: 3px;
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     color: rgba(255,255,255,0.45);
     border: 1px solid rgba(255,255,255,0.12);
     border-radius: 4px;
@@ -579,7 +576,7 @@
 }
 
 .ep-toggle-text {
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: rgba(255,255,255,0.55);
 }
 .ep-auto-refresh-label input:checked ~ .ep-toggle-text { color: var(--ep-green); }
@@ -637,7 +634,7 @@
 .ep-widget-title-actions { display: flex; align-items: center; gap: 8px; }
 
 .ep-widget-done-btn {
-    font-size: 0.78rem; padding: 5px 10px;
+    font-size: max(0.78rem, 11px); padding: 5px 10px;
     border-color: rgba(255,171,87,0.4); color: var(--ep-orange);
 }
 .ep-widget-done-btn.is-done {
@@ -645,7 +642,7 @@
     background: rgba(126,232,154,0.08);
 }
 .ep-widget-discuss-btn {
-    font-size: 0.78rem; padding: 5px 10px;
+    font-size: max(0.78rem, 11px); padding: 5px 10px;
     border-color: rgba(255,165,77,0.4); color: #ffab57;
 }
 .ep-widget-discuss-btn.is-discuss {
@@ -653,17 +650,17 @@
     border-color: rgba(255,165,77,0.65); color: #ffc176;
 }
 
-.ep-widget-reporting-group { font-size: 0.79rem; color: var(--ep-soft); }
+.ep-widget-reporting-group { font-size: max(0.79rem, 11px); color: var(--ep-soft); }
 
 .ep-reporting-group-input {
-    display: inline-block; width: 220px; font-size: 0.79rem;
+    display: inline-block; width: 220px; font-size: max(0.79rem, 11px);
     padding: 2px 6px; vertical-align: middle; margin-left: 2px;
     background: color-mix(in srgb, var(--kw-accent) 7%, transparent); border: 1px solid color-mix(in srgb, var(--kw-accent) 35%, transparent);
     color: var(--kw-accent-hover); border-radius: 5px;
 }
 
 .ep-widget-grism-badge {
-    font-size: 0.73rem; padding: 2px 8px; border-radius: 5px;
+    font-size: max(0.73rem, 11px); padding: 2px 8px; border-radius: 5px;
     background: color-mix(in srgb, var(--kw-accent) 10%, transparent); color: var(--ep-accent);
     border: 1px solid color-mix(in srgb, var(--kw-accent) 28%, transparent); white-space: nowrap;
 }
@@ -702,11 +699,11 @@
 .ep-lc-title { font-size: 0.88rem; font-weight: 600; color: rgba(255,255,255,0.85); }
 .ep-lc-controls { display: flex; align-items: center; gap: 8px; }
 .ep-lc-toggle {
-    font-size: 0.77rem; color: rgba(255,255,255,0.7);
+    font-size: max(0.77rem, 11px); color: rgba(255,255,255,0.7);
     display: inline-flex; align-items: center; gap: 4px;
 }
 .ep-lc-ext {
-    font-size: 0.74rem; color: rgba(255,255,255,0.55);
+    font-size: max(0.74rem, 11px); color: rgba(255,255,255,0.55);
     margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .ep-lc-plot { width: 100%; min-height: 300px; }
@@ -742,7 +739,7 @@
 .ep-image-delete {
     width: 100%; margin-top: 4px;
     border: 1px solid rgba(255,120,120,0.4); background: rgba(255,120,120,0.1);
-    color: #ffb4b4; border-radius: 5px; font-size: 0.73rem; padding: 4px 2px; cursor: pointer;
+    color: #ffb4b4; border-radius: 5px; font-size: max(0.73rem, 11px); padding: 4px 2px; cursor: pointer;
 }
 
 .ep-image-modal {
@@ -763,8 +760,7 @@
 .ep-widget-file-header {
     display: grid; grid-template-columns: 1fr 70px 90px;
     gap: 8px; padding: 2px 6px;
-    font-size: 0.67rem; color: rgba(255,255,255,0.35);
-    letter-spacing: 0.4px; text-transform: uppercase;
+    font-size: max(0.67rem, 11px); color: rgba(255,255,255,0.35);
 }
 .ep-file-list-wrap {
     max-height: 130px; overflow-y: auto;
@@ -775,16 +771,16 @@
     display: grid; grid-template-columns: 1fr 70px 90px;
     gap: 6px; align-items: center;
     border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;
-    padding: 3px 6px; font-size: 0.72rem; background: rgba(255,255,255,0.015);
+    padding: 3px 6px; font-size: max(0.72rem, 11px); background: rgba(255,255,255,0.015);
 }
 .ep-widget-file-row.today { border-color: rgba(126,232,154,0.6); background: rgba(126,232,154,0.03); }
 .ep-widget-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,0.88); font-family: monospace; }
-.ep-widget-file-grism { color: var(--ep-accent); font-size: 0.74rem; }
-.ep-widget-file-date  { color: rgba(255,255,255,0.45); font-size: 0.72rem; }
+.ep-widget-file-grism { color: var(--ep-accent); font-size: max(0.74rem, 11px); }
+.ep-widget-file-date  { color: rgba(255,255,255,0.45); font-size: max(0.72rem, 11px); }
 
 /* Widget col */
 .ep-widget-col { display: flex; flex-direction: column; gap: 4px; }
-.ep-widget-image-label { font-size: 0.78rem; color: rgba(255,255,255,0.65); }
+.ep-widget-image-label { font-size: max(0.78rem, 11px); color: rgba(255,255,255,0.65); }
 
 /* Member rows */
 .ep-room-member-row {
@@ -795,7 +791,7 @@
 .ep-room-member-role {
     display: inline-block; margin-left: 6px;
     padding: 1px 7px; border-radius: 999px;
-    font-size: 0.68rem; border: 1px solid rgba(255,255,255,0.2);
+    font-size: max(0.68rem, 11px); border: 1px solid rgba(255,255,255,0.2);
     color: rgba(255,255,255,0.75);
 }
 .ep-room-member-role.owner { border-color: rgba(255,205,86,0.5); color: #ffd166; }

@@ -15,7 +15,7 @@
 //   serverUp(key)          Promise<bool>
 //   config()               Promise<{preferred, order}>
 //   showStatus(container)  pill: CDS · ESA · IRSA with green/red dots, the one in use marked; click = this survey per server
-//   markSelect(select)     prefix each <option> with 🟢 (preferred server) / 🟡 (a backup) / 🔴 (nowhere, disabled)
+//   markSelect(select)     suffix each <option> with the backup server's name, or 'offline' (then disabled)
 //   markButtons(nodes, attr)  the same as a coloured dot inside each button (attr holds the survey id)
 //   SERVERS, SURVEYS, src (this file's versioned URL — the srcdoc iframes load the same one)
 (function () {
@@ -268,12 +268,13 @@
         return 'From ' + SERVERS[p.server].name + (p.server !== p.preferred ? ' (backup: ' + SERVERS[p.preferred].label + ' does not have it or is not answering)' : '') +
             (p.substitute ? '; a similar survey, not the same one' : '');
     }
-    var MARK = { up: '🟢 ', backup: '🟡 ', down: '🔴 ' };
+    // <option> text cannot carry an icon: the suffix names a backup server or says offline
+    var MARK = { up: '', backup: '', down: '' };
     function markSelect(sel) {
         if (!sel) return;
         Array.prototype.forEach.call(sel.options, function (o) {
             if (!o.dataset.khLabel) o.dataset.khLabel = o.textContent.trim();
-            o.textContent = '⚪ ' + o.dataset.khLabel;
+            o.textContent = o.dataset.khLabel + ' …';
             pick(o.value).then(function (p) {
                 var v = verdict(p);
                 if (!v) { o.textContent = o.dataset.khLabel; return; }

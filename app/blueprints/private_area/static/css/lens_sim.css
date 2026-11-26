@@ -1,5 +1,5 @@
 /* Lab › Special Run › Lens Simulator (special_run_lens_sim.html). Side column uses the Spectrum tool's sp-* styles. */
-.ls-page .kw-tool-side .kw-panel { display: grid; gap: 12px; }
+.ls-page .kw-tool-side .kw-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }   /* a long preset name must not widen the panel */
 /* The controls scroll on their own so the images on the right stay in view */
 .ls-page .kw-tool > .kw-tool-side { max-height: calc(100dvh - var(--kw-nav-h) - 28px); overflow-y: auto;
                                     padding-right: 6px; scrollbar-width: thin; }
@@ -7,12 +7,12 @@
 .ls-page .sp-hd { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .ls-seg { display: flex; }
 .ls-seg { flex-wrap: wrap; }
-.ls-seg .kw-seg-item { flex: 1 1 40%; justify-content: center; font-size: 0.78rem; }
+.ls-seg .kw-seg-item { flex: 1 1 40%; justify-content: center; font-size: max(0.78rem, 11px); }
 .ls-seg .kw-seg-item.is-on { background: var(--color-accent); color: #1b1208; font-weight: 600; opacity: 1; }
 #lsPage[data-model="pm"] .ls-sie, #lsPage[data-src="point"] .ls-ext { display: none; }
 #lsPage[data-tel="ideal"] .ls-obs, #lsPage:not([data-tel="custom"]) .ls-custom { display: none; }
 #lsPage[data-g2="0"] .ls-g2, #lsPage:not([data-src="hostsn"]) .ls-sn { display: none; }
-.ls-stat small { font-size: 0.7rem; color: var(--kw-text-muted); font-weight: 400; }
+.ls-stat small { font-size: max(0.7rem, 11px); color: var(--kw-text-muted); font-weight: 400; }
 
 .ls-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; background: #000;
              border-radius: var(--kw-radius-xl); overflow: hidden; }
@@ -21,23 +21,23 @@
 .ls-fig canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #lsSrc { cursor: grab; }
 #lsSrc.is-drag { cursor: grabbing; }
-.ls-fig figcaption { position: absolute; left: 10px; top: 8px; font-size: 0.78rem; color: #fff; pointer-events: none;
+.ls-fig figcaption { position: absolute; left: 10px; top: 8px; font-size: max(0.78rem, 11px); color: #fff; pointer-events: none;
                      text-shadow: 0 0 3px #000, 0 0 3px #000; }
 .ls-caus-key { color: #ff6b8a; }
 .ls-crit-key { color: var(--color-accent); }
 .ls-scale { position: absolute; left: 6%; bottom: 5%; height: 2px; background: #fff; box-shadow: 0 0 2px #000; pointer-events: none; }
-.ls-scale span { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: 0.72rem; color: #fff;
+.ls-scale span { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: max(0.72rem, 11px); color: #fff;
                  text-shadow: 0 0 3px #000; white-space: nowrap; }
 
 .ls-stats { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 18px; }
 .ls-stat { display: flex; flex-direction: column; gap: 2px; }
-.ls-stat span { font-size: 0.75rem; color: var(--kw-text-muted); }
+.ls-stat span { font-size: max(0.75rem, 11px); color: var(--kw-text-muted); }
 .ls-stat b { font-family: var(--kw-font-mono); font-size: 0.95rem; color: var(--kw-text-white); font-weight: 600; }
 .ls-stat.is-key b { color: var(--color-accent); }
 
 .ls-chart-panel, .ls-notes { margin-top: 14px; }
 .ls-chart-panel canvas { display: block; width: 100%; height: auto; margin-top: 8px; }
-.ls-muted { font-size: 0.75rem; color: var(--kw-text-muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
+.ls-muted { font-size: max(0.75rem, 11px); color: var(--kw-text-muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
 .ls-notes p { margin: 8px 0 0; font-size: 0.84rem; line-height: 1.55; color: var(--kw-text-secondary); }
 
 /* number boxes next to each slider */
@@ -45,7 +45,7 @@
 .ls-num { width: 76px; padding: 2px 6px; border: 1px solid var(--kw-border); border-radius: 6px; background: rgba(0, 0, 0, .25);
           color: var(--kw-text-white); font: 0.8rem var(--kw-font-mono, ui-monospace, monospace); text-align: right; }
 .ls-num:focus { outline: none; border-color: var(--color-accent); }
-.ls-unit { font-size: 0.72rem; color: var(--kw-text-muted); min-width: 14px; }
+.ls-unit { font-size: max(0.72rem, 11px); color: var(--kw-text-muted); min-width: 14px; }
 
 /* 3D light paths + teaching guide */
 .ls-3d-panel, .ls-guide { margin-top: 14px; }
@@ -56,7 +56,7 @@
 #ls3d { display: block; width: 100%; height: 520px; border-radius: var(--kw-radius-lg); background: #05070c; cursor: grab; touch-action: none; }
 #ls3d:active { cursor: grabbing; }
 @media (max-width: 760px) { #ls3d { height: 380px; } }
-.ls-3d-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 0.76rem; color: var(--kw-text-secondary); }
+.ls-3d-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: max(0.76rem, 11px); color: var(--kw-text-secondary); }
 .ls-3d-legend i { display: inline-block; width: 16px; height: 3px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
 .ls-3d-legend i.is-dash { height: 0; border-top: 2px dashed; background: none; }
 .ls-guide-grid { display: grid; grid-template-columns: minmax(200px, 280px) 1fr; gap: 16px; margin-top: 10px; }
@@ -64,10 +64,32 @@
 .ls-guide-list { display: grid; gap: 4px; align-content: start; }
 .ls-step { display: flex; gap: 10px; align-items: center; padding: 7px 10px; border: 1px solid transparent; border-radius: 8px;
            background: none; color: var(--kw-text-secondary); font: inherit; font-size: 0.84rem; text-align: left; cursor: pointer; }
-.ls-step span { flex: 0 0 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.08); font-size: 0.75rem; }
+.ls-step span { flex: 0 0 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.08); font-size: max(0.75rem, 11px); }
 .ls-step:hover { background: rgba(255,255,255,.05); }
 .ls-step.is-on { border-color: var(--color-accent); color: var(--kw-text-white); }
-.ls-step.is-on span { background: var(--color-accent); color: #1b1208; font-weight: 700; }
+.ls-step.is-on span { background: var(--color-accent); color: #1b1208; font-weight: 600; }
 .ls-guide-title { font-size: 1.05rem; font-weight: 600; color: var(--kw-text-white); }
 .ls-guide-text p { font-size: 0.9rem; line-height: 1.65; color: var(--kw-text-secondary); margin: 8px 0 14px; }
 .ls-guide-nav { display: flex; gap: 10px; }
+
+/* phones: inputs are 16px there (no iOS zoom), so the value box needs room for 4.94e+12 */
+@media (max-width: 860px) { .ls-num { width: 108px; } }
+
+/* Phones: source plane and lensed image side by side, pinned under the header, so every slider change shows at once;
+   the controls come one group at a time (Lens / Source / Display tabs); 3D, guide and chart follow */
+.ls-tabs { display: none; }
+@media (max-width: 760px) {
+    .ls-page .kw-tool { display: flex; flex-direction: column; gap: 12px; }
+    .ls-page .sp-main { display: contents; }
+    .ls-page .ls-panels { order: 0; position: sticky; z-index: 5; grid-template-columns: repeat(2, minmax(0, 1fr));
+        top: calc(var(--sh-gap) + var(--sh-safe-t) + var(--sh-bar-h) + 8px); box-shadow: 0 8px 16px rgba(0, 0, 0, 0.45); }
+    .ls-page .ls-fig figcaption { left: 6px; top: 5px; right: 6px; }
+    .ls-page .ls-caus-key, .ls-page .ls-crit-key, .ls-page .ls-key-sep { display: none; }
+    .ls-page .ls-tabs { order: 1; display: flex; width: 100%; }
+    .ls-page .ls-tabs .kw-seg-item { flex: 1; min-height: 40px; }
+    .ls-page .kw-tool > .kw-tool-side { order: 2; }
+    .ls-page .sp-main > :not(.ls-panels) { order: 3; }
+    #lsPage:not([data-tab="lens"]) [data-ls-tab="lens"],
+    #lsPage:not([data-tab="source"]) [data-ls-tab="source"],
+    #lsPage:not([data-tab="display"]) [data-ls-tab="display"] { display: none; }
+}

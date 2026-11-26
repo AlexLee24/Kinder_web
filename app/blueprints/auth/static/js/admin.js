@@ -326,7 +326,7 @@ async function saveBatchGroups() {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('Groups updated successfully!', 'success');
+            showNotification('Groups updated', 'success');
             closeModal('batchGroupsModal');
             // Refresh the main table
             setTimeout(() => location.reload(), 1000);
@@ -358,7 +358,7 @@ async function addToGroup(groupName) {
             // Refresh the modal display immediately
             await loadUserGroups(currentUserEmail);
             // Show success message
-            showNotification('User added to group successfully!', 'success');
+            showNotification('User added to group', 'success');
         } else {
             showNotification('Error: ' + result.error, 'error');
         }
@@ -391,7 +391,7 @@ async function removeFromGroup(userEmail, groupName) {
             // If modal is open, refresh it; otherwise reload page
             if (document.getElementById('manageGroupsModal').style.display === 'block') {
                 await loadUserGroups(currentUserEmail);
-                showNotification('User removed from group successfully!', 'success');
+                showNotification('User removed from group', 'success');
             } else {
                 location.reload();
             }
@@ -477,7 +477,7 @@ async function addUser(event) {
         const result = await response.json();
 
         if (result.success) {
-            showNotification(result.message || 'User added successfully!', 'success');
+            showNotification(result.message || 'User added', 'success');
             closeModal('addUserModal');
             setTimeout(() => location.reload(), 1000);
         } else {
@@ -662,7 +662,7 @@ async function createGroup(event) {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('Group created successfully!', 'success');
+            showNotification('Group created', 'success');
             closeModal('createGroupModal');
             setTimeout(() => location.reload(), 1000);
         } else {
@@ -690,7 +690,7 @@ async function addToGroup(groupName) {
         const result = await response.json();
         
         if (result.success) {
-            alert('User added to group successfully!');
+            alert('User added to group');
             updateGroupsDisplay();
         } else {
             alert('Error: ' + result.error);
@@ -721,7 +721,7 @@ async function removeFromGroup(userEmail, groupName) {
         const result = await response.json();
         
         if (result.success) {
-            alert('User removed from group successfully!');
+            alert('User removed from group');
             location.reload();
         } else {
             alert('Error: ' + result.error);
@@ -780,7 +780,7 @@ async function deleteUser(userEmail) {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('User deleted successfully!', 'success');
+            showNotification('User deleted', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
@@ -810,7 +810,7 @@ async function deleteGroup(groupName) {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('Group deleted successfully!', 'success');
+            showNotification('Group deleted', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
@@ -831,7 +831,7 @@ function copyInvitationLink(token) {
     const link = `${window.location.origin}/invitation/${token}`;
     
     navigator.clipboard.writeText(link).then(() => {
-        showNotification('Invitation link copied to clipboard!', 'success');
+        showNotification('Invitation link copied to clipboard', 'success');
     }).catch(err => {
         console.error('Failed to copy: ', err);
         const textArea = document.createElement('textarea');
@@ -840,7 +840,7 @@ function copyInvitationLink(token) {
         textArea.select();
         document.execCommand('copy');
         document.body.removeChild(textArea);
-        showNotification('Invitation link copied to clipboard!', 'success');
+        showNotification('Invitation link copied to clipboard', 'success');
     });
 }
 
@@ -913,7 +913,7 @@ async function deleteInvitation(token) {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('Invitation deleted successfully!', 'success');
+            showNotification('Invitation deleted', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
@@ -1020,7 +1020,7 @@ async function addSelectedMembers() {
         const result = await response.json();
         
         if (result.success) {
-            showNotification(`Successfully added ${result.added_count} users to group!`, 'success');
+            showNotification(`Added ${result.added_count} users to the group`, 'success');
             closeModal('addMembersModal');
             setTimeout(() => location.reload(), 1000);
         } else {
@@ -1052,7 +1052,7 @@ async function removeFromGroup(userEmail, groupName) {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('User removed from group successfully!', 'success');
+            showNotification('User removed from group', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
@@ -1082,7 +1082,7 @@ async function deleteGroup(groupName) {
         const result = await response.json();
         
         if (result.success) {
-            showNotification('Group deleted successfully!', 'success');
+            showNotification('Group deleted', 'success');
             setTimeout(() => location.reload(), 1000);
         } else {
             showNotification('Error: ' + result.error, 'error');
@@ -1133,7 +1133,7 @@ async function checkDataConsistency() {
             } else {
                 statusElement.textContent = '';
                 statusElement.className = 'hdr-status no-issues';
-                showNotification('Data consistency check passed - no issues found!', 'success');
+                showNotification('Data consistency check passed: no issues found', 'success');
             }
         } else {
             statusElement.textContent = 'Check failed';
@@ -1204,7 +1204,7 @@ async function cleanDataConsistency() {
         const result = await response.json();
         
         if (result.success) {
-            showNotification(`Successfully cleaned ${result.cleaned_count} data consistency issues!`, 'success');
+            showNotification(`Cleaned ${result.cleaned_count} data consistency issues`, 'success');
             closeModal('consistencyModal');
             
             // Update status
@@ -1297,7 +1297,7 @@ async function addGreatLabPermission() {
         if (data.success) {
             groupSelect.value = '';
             loadGreatLabPermissions();
-            showNotification('Permission added successfully!', 'success');
+            showNotification('Permission added', 'success');
         } else {
             showNotification('Error: ' + data.error, 'error');
         }
@@ -1325,7 +1325,7 @@ async function removeGreatLabPermission(groupName) {
         const data = await response.json();
         if (data.success) {
             loadGreatLabPermissions();
-            showNotification('Permission removed successfully!', 'success');
+            showNotification('Permission removed', 'success');
         } else {
             showNotification('Error: ' + data.error, 'error');
         }
@@ -1477,7 +1477,7 @@ function _renderDetectStatus(st) {
     </div>`);
     cards.push(`<div class="dt-card ${last && last.status === 'error' ? 'warn' : ''}">
         <div class="dt-label">Last run (this server)</div>
-        <div class="dt-value">${last ? `${last.status === 'success' ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">✗</span>'} ${escapeHtml(last.label)}` : '—'}</div>
+        <div class="dt-value">${last ? `${last.status === 'success' ? '<span class="dt-ok" aria-label="OK"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>' : '<span class="dt-bad" aria-label="Failed"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></span>'} ${escapeHtml(last.label)}` : '—'}</div>
         <div class="dt-sub">${last ? `${_timeAgo(last.finished_at)}${last.seconds ? ' · ' + last.seconds + ' s' : ''}${last.counts ? ' · ' + _countsText(last.counts) : (last.message ? ' · ' + escapeHtml(last.message) : '')}` : 'nothing yet since start-up'}</div>
     </div>`);
     cards.push(`<div class="dt-card ${db.last_run && (Date.now() - new Date(db.last_run).getTime()) > 6 * 3600e3 ? 'warn' : ''}">
@@ -1503,7 +1503,7 @@ function _renderDetectStatus(st) {
     cards.push(`<div class="dt-card ${st.sfd_maps ? '' : 'warn'}">
         <div class="dt-label">Code &amp; data</div>
         <div class="dt-value">${st.version && st.version.synced ? 'synced ' + st.version.synced.slice(0, 10) : (st.code_present ? 'present' : '<span class="dt-bad">missing</span>')}</div>
-        <div class="dt-sub">SFD dust maps ${st.sfd_maps ? '<span class="dt-ok">✓</span>' : '<span class="dt-bad">missing (fetched on first use)</span>'} · <span title="${escapeHtml(st.data_dir || '')}">data dir</span></div>
+        <div class="dt-sub">SFD dust maps ${st.sfd_maps ? '<span class="dt-ok" aria-label="present"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></span>' : '<span class="dt-bad">missing (fetched on first use)</span>'} · <span title="${escapeHtml(st.data_dir || '')}">data dir</span></div>
     </div>`);
     grid.innerHTML = cards.join('');
 }

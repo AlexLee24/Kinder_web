@@ -260,7 +260,7 @@
 
         singleWarnings = (flags.warnings || []).slice();
         if (flags.is_saturated) {
-            singleWarnings.unshift('⚠️ Single exposure time exceeds the saturation limit (Full Well Capacity reached).');
+            singleWarnings.unshift('Single exposure time exceeds the saturation limit (Full Well Capacity reached).');
         }
         refreshWarnings();
 
@@ -568,7 +568,7 @@
         if (riskRuns.length) {
             annotations.push({
                 x: times[riskRuns[0][0]], y: 1, xref: 'x3', yref: 'y3 domain',
-                text: '⚠ saturation risk window', showarrow: false,
+                text: 'Saturation risk window', showarrow: false,
                 xanchor: 'left', yanchor: 'top',
                 font: { color: warning, size: 10, family: 'inherit' }
             });
@@ -691,7 +691,7 @@
         }
         batchWarnings = (data.flags.warnings || []).slice();
         if (data.flags.is_saturated) {
-            batchWarnings.unshift('⚠️ At least one point in the time series exceeds the saturation limit — see the shaded window(s) below.');
+            batchWarnings.unshift('At least one point in the time series exceeds the saturation limit — see the shaded window(s) below.');
         }
         refreshWarnings();
 

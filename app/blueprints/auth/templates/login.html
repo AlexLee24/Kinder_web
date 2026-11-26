@@ -1,6 +1,6 @@
 {% extends '_base.html' %}
 {#- Sign-in page (guests): one centred card inside the content column; not a nav page, the card header is the page head. -#}
-{% block title %}Log In · Kinder{% endblock %}
+{% block title %}Log in · Kinder{% endblock %}
 {% block head %}
     <meta name="description" content="Kinder Login Page">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
@@ -12,7 +12,7 @@
     <section class="login-card" aria-labelledby="login-title">
         <div class="login-header">
             <img src="{{ url_for('static', filename='pwa/logo-128.png') }}" alt="" aria-hidden="true" class="login-logo">
-            <h1 id="login-title">Welcome to Kinder</h1>
+            <h1 id="login-title">Log in to Kinder</h1>
             <p>Kilonova Finder · GREAT Lab, NCU</p>
         </div>
 
@@ -38,7 +38,7 @@
                     <span>Password</span>
                     <input type="password" name="password" class="admin-input" required maxlength="1024" autocomplete="current-password">
                 </label>
-                <button type="submit" class="admin-login-btn kw-btn kw-btn-primary">Log In</button>
+                <button type="submit" class="admin-login-btn kw-btn kw-btn-primary">Log in</button>
             </form>
             <p class="login-hint">Direct-login accounts are created by an administrator. You can change your password after signing in.</p>
         </details>

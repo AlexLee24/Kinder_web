@@ -65,7 +65,7 @@
                         ${groupOpts ? `<select class="kw-select kw-select-sm" data-add-group aria-label="Add a group"><option value="">+ group</option>${groupOpts}</select>` : ''}</div></div>
                 <div class="apm-extra-row"><span class="apm-extra-label">Also these people</span>
                     <div class="perm-groups">${userChips || '<span class="cell-muted">none</span>'}
-                        <form class="apm-add-user" data-add-user><input class="kw-input kw-input-sm" list="apmPeopleList" placeholder="+ name or email" aria-label="Add a person"><button type="submit" class="kw-btn kw-btn-sm">Add</button></form></div></div>
+                        <form class="apm-add-user" data-add-user><input class="kw-input kw-input-sm" list="apmPeopleList" placeholder="+ person" title="Name or email" aria-label="Add a person by name or email"><button type="submit" class="kw-btn kw-btn-sm">Add</button></form></div></div>
             </div>
             <footer class="apm-who"><button type="button" class="apm-who-btn" data-who aria-expanded="${openWho.has(a.key)}"><b>${who.length}</b> ${who.length === 1 ? 'person' : 'people'} can do this ${openWho.has(a.key) ? '▴' : '▾'}</button>${whoList}</footer>
         </article>`;

@@ -43,11 +43,16 @@
 
     // ── people list ──
     let filter = 'all';
-    const PLAT_IC = { iPhone: '📱', iPad: '📱', Android: '🤖', Mac: '💻', Windows: '🖥️', Linux: '🐧' };
+    const SVG = (d) => '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+    const IC_PHONE = SVG('<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/>');
+    const IC_LAPTOP = SVG('<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>');
+    const IC_DESKTOP = SVG('<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>');
+    const IC_BELL = SVG('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>');
+    const PLAT_IC = { iPhone: IC_PHONE, iPad: IC_PHONE, Android: IC_PHONE, Mac: IC_LAPTOP, Windows: IC_DESKTOP, Linux: IC_DESKTOP };
     function deviceHTML(d) {
         const health = d.fail_count ? '<span class="ap-bad">failed ' + d.fail_count + '× (' + esc(d.last_error) + '); removed after 5</span>'
             : d.last_ok_at ? 'last delivered ' + esc(ago(d.last_ok_at)) : '<span class="ap-warn-t">not delivered yet</span>';
-        return '<div class="ap-dev" data-sid="' + d.id + '"><span class="ap-dev-ic" aria-hidden="true">' + (PLAT_IC[d.platform] || '🔔') + '</span>' +
+        return '<div class="ap-dev" data-sid="' + d.id + '"><span class="ap-dev-ic" aria-hidden="true">' + (PLAT_IC[d.platform] || IC_BELL) + '</span>' +
             '<div class="ap-dev-main"><b>' + esc(d.platform) + ' · ' + esc(d.browser) + '</b>' +
             '<span class="ap-dev-cats">' + Object.keys(CATS).map((k) => '<span class="ap-cat' + (d.categories.includes(k) ? ' is-on' : '') +
                 '" title="' + (d.categories.includes(k) ? 'Takes: ' : 'Unticked: ') + esc(CATS[k]) + '">' + esc(CATS[k].replace(/ \(.*\)$/, '')) + '</span>').join('') + '</span>' +

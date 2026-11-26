@@ -359,7 +359,7 @@ function copyToClipboard() {
     navigator.clipboard.writeText(copyText.value).then(() => {
         const btn = document.querySelector('.btn-copy');
         const originalText = btn.innerText;
-        btn.innerText = 'Copied!';
+        btn.innerText = 'Copied';
         setTimeout(() => btn.innerText = originalText, 2000);
     });
 }

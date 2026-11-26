@@ -44,7 +44,7 @@
 .ep-alias {
     display: inline-block;
     margin-left: 6px;
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     color: var(--kw-text-secondary);
     font-weight: 400;
     white-space: nowrap;
@@ -54,7 +54,7 @@
     flex-shrink: 0;
     padding: 3px 10px;
     border-radius: 999px;
-    font-size: 0.74rem;
+    font-size: max(0.74rem, 11px);
     font-weight: 600;
     background: rgba(255, 255, 255, 0.08);
     color: var(--kw-text-primary);
@@ -106,7 +106,7 @@
 .last-update {
     flex: 1;
     min-width: 0;
-    font-size: 0.72rem;
+    font-size: max(0.72rem, 11px);
     color: var(--kw-text-muted);
     text-align: right;
     overflow: hidden;

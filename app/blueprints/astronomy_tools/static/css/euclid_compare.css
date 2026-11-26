@@ -22,7 +22,7 @@
 @media (max-width: 640px) { .ec-grid { --n: 1 !important; } }
 .ec-panel { position: relative; margin: 0; aspect-ratio: 1; background: #000; overflow: hidden; }
 .ec-panel canvas, .ec-panel img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.ec-panel figcaption { position: absolute; left: 8px; top: 6px; font-size: 0.75rem; color: #fff;
+.ec-panel figcaption { position: absolute; left: 8px; top: 6px; font-size: max(0.75rem, 11px); color: #fff;
                        text-shadow: 0 0 3px #000, 0 0 3px #000; }
 .ec-panel figcaption a { color: var(--kw-accent); text-decoration: none; }
 .ec-panel .ec-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center;
@@ -33,5 +33,5 @@
 .ec-panel.has-mark::before { left: 53.5%; top: calc(50% - 1px); width: 7%; height: 2px; }
 .ec-panel.has-mark::after { left: calc(50% - 1px); top: 39.5%; width: 2px; height: 7%; }
 .ec-scale { position: absolute; left: 6%; bottom: 5%; height: 2px; background: #fff; box-shadow: 0 0 2px #000; }
-.ec-scale span { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: 0.7rem; color: #fff;
+.ec-scale span { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%); font-size: max(0.7rem, 11px); color: #fff;
                  text-shadow: 0 0 3px #000; white-space: nowrap; }

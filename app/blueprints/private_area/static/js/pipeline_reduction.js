@@ -261,7 +261,7 @@
     let offset = 0, timer = null, last = null, seeded = false;
     const ticked = new Set();
 
-    const STEP_ICON = { done: '✓', failed: '✕', skipped: '–', running: '', pending: '' };
+    const STEP_ICON = { done: '<svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>', failed: '<svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>', skipped: '–', running: '', pending: '' };
     const REASON = { no_solution: 'no solution', cpu_limit: 'CPU limit', timeout: 'took too long' };
 
     function stateChip(status) {
@@ -277,7 +277,7 @@
             const t = s.started && s.ended ? secs(s.ended - s.started) : s.started && s.status === 'running' ? secs(Date.now() / 1000 - s.started) : '';
             const st = status !== 'running' && s.status === 'running' ? 'failed' : s.status;
             return el('li', { class: 'rd-step is-' + st },
-                el('span', { class: 'rd-step-dot', 'aria-hidden': 'true', text: STEP_ICON[st] || '' }),
+                (() => { const d = el('span', { class: 'rd-step-dot', 'aria-hidden': 'true' }); d.innerHTML = STEP_ICON[st] || ''; return d; })(),
                 el('span', { class: 'rd-step-label', text: s.label }),
                 el('span', { class: 'rd-step-note', text: [s.note, t].filter(Boolean).join(' · ') }));
         }));

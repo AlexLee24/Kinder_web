@@ -41,9 +41,8 @@
         }
         .sp-back:hover { color: #F39F5A; }
         .sp-badge {
-            font-size: 0.7rem;
+            font-size: max(0.7rem, 11px);
             color: rgba(210,215,240,0.35);
-            letter-spacing: 0.5px;
         }
         .sp-actions {
             display: flex;
@@ -51,7 +50,7 @@
         }
         .sp-btn {
             padding: 4px 11px;
-            font-size: 0.74rem;
+            font-size: max(0.74rem, 11px);
             font-family: inherit;
             background: rgba(255,255,255,0.06);
             border: 1px solid rgba(255,255,255,0.12);
@@ -75,7 +74,7 @@
         </a>
         <span class="sp-badge">
             {{ 'Static image' if is_static else 'Interactive chart' }} · shared/{{ share_id[:8] }}
-            {% if has_password %}<span style="margin-left:6px;opacity:0.6" title="Password protected">🔒</span>{% endif %}
+            {% if has_password %}<span style="margin-left:6px;opacity:0.6;display:inline-flex;vertical-align:-2px" title="Password protected" aria-label="Password protected"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>{% endif %}
         </span>
         <div class="sp-actions">
             {% if unlocked %}
@@ -130,7 +129,7 @@
             navigator.clipboard.writeText(location.href).then(() => {
                 const btn = document.getElementById('copyBtn');
                 const orig = btn.textContent;
-                btn.textContent = 'Copied!';
+                btn.textContent = 'Copied';
                 setTimeout(() => { btn.textContent = orig; }, 1800);
             });
         }

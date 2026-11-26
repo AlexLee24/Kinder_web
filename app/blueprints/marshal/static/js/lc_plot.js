@@ -105,9 +105,19 @@ function lcAddPhaseAxis(figData, ref, title) {
     const lo = Number(range[0]), hi = Number(range[1]);
     if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
 
+    // Phones: the two bottom axes and the two magnitude titles would print over each other, so the plot
+    // leaves more room below, the MJD axis keeps its ticks without a title and level labels, and only
+    // the apparent-magnitude title is shown.
+    const narrow = window.matchMedia && window.matchMedia('(max-width: 600px)').matches;
+    const bottom = narrow ? 0.26 : LC_PHASE_DOMAIN_BOTTOM;
     ['yaxis', 'yaxis2'].forEach(ax => {
-        if (layout[ax] && !layout[ax].overlaying) layout[ax].domain = [LC_PHASE_DOMAIN_BOTTOM, 1];
+        if (layout[ax] && !layout[ax].overlaying) layout[ax].domain = [bottom, 1];
     });
+    if (narrow) {
+        if (layout.xaxis) Object.assign(layout.xaxis, { title: { text: '' }, tickangle: 0, tickmode: 'auto', dtick: null, tick0: null, nticks: 4, tickformat: 'd' });
+        if (layout.xaxis2 && layout.xaxis2.title) layout.xaxis2.title = { text: '' };
+        if (layout.yaxis2 && layout.yaxis2.title) layout.yaxis2.title = { text: '' };
+    }
     layout.xaxis3 = {
         title: { text: title || 'Phase (days since discovery)', standoff: 4 },
         overlaying: 'x',
@@ -358,10 +368,16 @@ function lcDraw(container, plotData, addPhaseAxis, height) {
     // Phones: desktop margins leave a ~150px wide plot and the mode bar covers the title
     const phone = window.matchMedia('(max-width: 600px)').matches;
     if (phone && figData.layout) {
-        const t = figData.layout.title;
-        figData.layout.margin = { l: 48, r: 44, t: 36, b: 44, pad: 0 };
-        figData.layout.font.size = 10;
-        figData.layout.title = Object.assign({}, typeof t === 'string' ? { text: t } : (t || {}), { font: { size: 13 } });
+        const L = figData.layout;
+        // the panel is already titled "Photometry": no plot title; the right margin only when the
+        // absolute-magnitude axis has numbers to show (no redshift: nothing there but empty space)
+        const absShown = !!(L.yaxis2 && L.yaxis2.showticklabels !== false);
+        L.margin = { l: 52, r: absShown ? 44 : 14, t: 28, b: 44, pad: 0 };
+        if (!absShown && L.yaxis2) L.yaxis2.automargin = false;   // an axis with no numbers must not reserve a right margin
+        if (L.yaxis) { L.yaxis.automargin = true; L.yaxis.title = Object.assign({}, typeof L.yaxis.title === 'string' ? { text: L.yaxis.title } : (L.yaxis.title || {}), { standoff: 6 }); }   // room for ticks + "App Mag", never cut at the edge
+        L.font.size = 10;
+        L.title = { text: '' };
+        if (L.xaxis2) Object.assign(L.xaxis2, { tickformat: '%b %-d', nticks: 4 });   // "Oct 28", one line
         document.getElementById('phot-plotly-div').style.height = '380px';
     }
     if (addPhaseAxis) addPhaseAxis(figData);

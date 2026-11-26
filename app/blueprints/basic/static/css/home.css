@@ -16,7 +16,7 @@ body.home-page *, body.home-page *::before, body.home-page *::after { box-sizing
 
 /* ── Hero pieces (layout in the first-screen section below) ── */
 .main-banner canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.hero-eyebrow { margin: 0 0 16px; font-size: var(--kw-text-xs); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--kw-accent); }
+.hero-eyebrow { margin: 0 0 16px; font-size: 0.8rem; font-weight: 500; color: var(--kw-accent); }
 .home-logo { width: clamp(56px, 8vw, 88px); height: auto; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5)); }
 .hero-lead { margin: 16px auto 0; max-width: 520px; color: rgba(255, 255, 255, 0.72); font-size: var(--kw-text-md); line-height: 1.55; }
 .hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px; }
@@ -61,9 +61,9 @@ body.home-page *, body.home-page *::before, body.home-page *::after { box-sizing
 @media (max-width: 560px) { .col-span-2 { grid-column: span 1; } .home-gallery-grid { grid-auto-rows: 160px; } }
 
 /* ── Footer ───────────────────────────────────────────────────── */
-.home-footer { border-top: 1px solid var(--kw-border); padding: 24px clamp(16px, 3vw, 32px) 40px; color: var(--kw-text-muted); font-size: var(--kw-text-xs); }
+.home-footer { border-top: 1px solid var(--kw-border); padding: 24px clamp(16px, 3vw, 32px) 40px; color: var(--kw-text-muted); font-size: max(0.75rem, 11px); }
 .home-footer-inner { max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; }
-.home-footer a { color: var(--kw-text-secondary); text-decoration: none; }
+.home-footer a { display: inline-flex; align-items: center; min-height: 32px; color: var(--kw-text-secondary); text-decoration: none; }   /* 32px tap height, row height unchanged */
 .home-footer a:hover { color: #fff; }
 .bottom-bar-left, .bottom-bar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 
@@ -167,7 +167,7 @@ body.shell .sh-hello.main-banner {
     transform-origin: left bottom; transform: scale(calc(1 - var(--hp, 0) * 0.45)); will-change: transform;
     animation: kwRise 0.8s var(--kw-ease) both;
 }
-.sh-hello .hero-eyebrow { margin: 0 0 14px; color: var(--color-accent); letter-spacing: 0.16em; }
+.sh-hello .hero-eyebrow { margin: 0 0 14px; color: var(--color-accent); }
 .sh-hello-mark { display: flex; align-items: center; gap: clamp(12px, 1.6vw, 22px); }
 .sh-hello .home-logo { width: clamp(64px, 8.5vw, 120px); height: auto; }
 .sh-hello h1 {
@@ -181,7 +181,7 @@ body.shell .sh-hello.main-banner {
 .sh-scrollcue {
     position: absolute; z-index: 2; left: 50%; bottom: 10px; transform: translateX(-50%);
     display: flex; flex-direction: column; align-items: center; gap: 2px;
-    font-size: 0.78rem; color: rgba(255, 255, 255, 0.7); text-decoration: none; opacity: calc(1 - var(--hp, 0) * 3);
+    font-size: max(0.78rem, 11px); color: rgba(255, 255, 255, 0.7); text-decoration: none; opacity: calc(1 - var(--hp, 0) * 3);
 }
 .sh-scrollcue svg { animation: sh-bob 1.8s ease-in-out infinite; }
 @keyframes sh-bob { 50% { transform: translateY(5px); } }
@@ -189,7 +189,7 @@ body.shell .sh-hello.main-banner {
 .sh-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 18px;
     border-radius: 11px; border: 1px solid transparent; background: var(--color-accent); color: var(--color-accent-text);
-    font: 700 0.92rem/1 var(--kw-font-sans); text-decoration: none; cursor: pointer;
+    font: 600 0.92rem/1 var(--kw-font-sans); text-decoration: none; cursor: pointer;
     transition: transform 0.15s, filter 0.15s, background-color 0.15s;
 }
 .sh-btn:hover { filter: brightness(1.06); }
@@ -203,7 +203,7 @@ body.shell .sh-hello.main-banner {
 /* Sections: 20px between blocks, h2 = 1rem / 700 / 12px below */
 .sh-section { margin-top: 20px; }
 .sh-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin: 0 4px 12px; }
-.sh-section-head h2 { margin: 0; font-size: 1rem; font-weight: 700; letter-spacing: 0; color: var(--color-text); }
+.sh-section-head h2 { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: 0; color: var(--color-text); }
 .sh-section-head p { margin: 2px 0 0; font-size: 0.82rem; color: var(--color-text-muted); }
 
 /* Quick access bento: Marshal leads (2 columns); 4 columns → 2 → 1 */
@@ -223,7 +223,7 @@ body.shell .sh-hello.main-banner {
 .sh-q-feat { padding: 22px 24px; }
 .sh-q-feat .sh-q-ic { width: 48px; height: 48px; border-radius: var(--radius-lg); }
 .sh-q-feat .sh-q-ic svg { width: 26px; height: 26px; }
-.sh-q-feat .sh-q-t { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+.sh-q-feat .sh-q-t { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
 .sh-q-feat .sh-q-d { max-width: 460px; }
 .sh-q-go { margin-top: auto; padding-top: 6px; font-size: 0.86rem; font-weight: 600; color: var(--color-accent); }
 .sh-q-lab .sh-q-ic { background: rgba(191, 90, 242, 0.16); color: #D49BFF; }
@@ -263,5 +263,11 @@ body.shell .sh-foot .home-footer-inner { max-width: none; }
     .sh-q-feat, .sh-q-wide { grid-column: auto; }
     .sh-q-feat { padding: 18px 20px; }
     .sh-q-feat .sh-q-t { font-size: 1.3rem; }
+    /* phones: the tools under Marshal are list rows (icon beside title + line) instead of ~230px cards that
+       were mostly empty, so the whole quick access fits in about a screen */
+    .sh-q:not(.sh-q-feat) { display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: center; padding: 14px 16px; }
+    .sh-q:not(.sh-q-feat) .sh-q-ic { grid-row: 1 / span 2; align-self: start; }
+    .sh-q:not(.sh-q-feat) .sh-q-t { margin-top: 0; font-size: 1rem; }
+    .sh-q:not(.sh-q-feat) .sh-q-d { font-size: 0.84rem; line-height: 1.45; }
     body.shell .sh-foot { margin: 8px 0 0; padding: 20px var(--sh-page-x) 24px; }
 }

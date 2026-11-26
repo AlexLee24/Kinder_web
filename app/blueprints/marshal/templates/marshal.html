@@ -309,15 +309,15 @@
                         <table class="data-table kw-table">
                             <thead>
                                 <tr>
-                                    <th class="name-column">Object Name</th>
+                                    <th class="name-column">Object name</th>
                                     <th class="class-column">Class</th>
                                     <th>RA (J2000)</th>
                                     <th>Dec (J2000)</th>
-                                    <th>Discover Mag</th>
-                                    <th>Brightest Mag</th>
+                                    <th>Discover mag</th>
+                                    <th>Brightest mag</th>
                                     <th>Brightest M</th>
                                     <th>Redshift</th>
-                                    <th>Discovery Date</th>
+                                    <th>Discovery date</th>
                                     <th>Discoverer</th>
                                     <th class="tag-column">Tag</th>
                                     <th>Actions</th>
@@ -359,7 +359,7 @@
                 {% if session.user %}
                 <section class="kw-panel side-widget">
                     <div class="kw-panel-head widget-header">
-                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Top Viewed</h2>
+                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>Top viewed</h2>
                         <div class="widget-header-control">
                             <select id="topViewedMode" class="kw-select kw-select-sm" onchange="loadTopViewed()" aria-label="Top viewed period">
                                 <option value="all">All Time</option>
@@ -385,7 +385,7 @@
                 <!-- Recent Comments -->
                 <section class="kw-panel side-widget">
                     <div class="kw-panel-head widget-header">
-                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recent Comments</h2>
+                        <h2><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Recent comments</h2>
                     </div>
                     <ul class="widget-list" id="recentCommentsList">
                         <li class="empty-message">Loading...</li>
@@ -414,7 +414,7 @@
         <div class="upload-modal advanced-filter-dialog">
         <div class="modal-header advanced-filter-header">
             <div class="advanced-filter-heading">
-                <h3>Advanced Filters</h3>
+                <h3>Advanced filters</h3>
                 <p>Use the full-screen filter workspace to narrow the Marshal list more clearly.</p>
             </div>
             <button type="button" class="close-modal advanced-filter-close kw-icon-btn" onclick="toggleAdvancedFilters()" aria-label="Close">
@@ -435,7 +435,7 @@
 
                 <!-- Tag Filter -->
                 <div class="filter-group">
-                    <label>Status Tag</label>
+                    <label>Status tag</label>
                     <select id="tagFilter">
                         <option value="">All Status</option>
                         <option value="object">Inbox</option>
@@ -452,7 +452,7 @@
 
             <div class="filter-row">
                 <div class="filter-group">
-                    <label>Discovery Date Range</label>
+                    <label>Discovery date range</label>
                     <div class="date-range-group">
                         <input type="date" id="dateFrom" placeholder="From">
                         <span class="range-separator">—</span>
@@ -462,7 +462,7 @@
                 </div>
 
                 <div class="filter-group">
-                    <label>Apparent Magnitude</label>
+                    <label>Apparent magnitude</label>
                     <div class="magnitude-range-group">
                         <input type="number" step="0.1" id="appMagMin" placeholder="Min mag">
                         <span class="range-separator">—</span>
@@ -474,7 +474,7 @@
 
             <div class="filter-row">
                 <div class="filter-group">
-                    <label>Redshift Range</label>
+                    <label>Redshift range</label>
                     <div class="redshift-range-group">
                         <input type="number" step="0.001" id="redshiftMin" placeholder="Min z">
                         <span class="range-separator">—</span>
@@ -492,7 +492,7 @@
 
             <div class="filter-row">
                 <div class="filter-group">
-                    <label>Brightest Mag Range</label>
+                    <label>Brightest mag range</label>
                     <div class="magnitude-range-group">
                         <input type="number" step="0.1" id="brightestMagMin" placeholder="Min mag">
                         <span class="range-separator">—</span>
@@ -502,7 +502,7 @@
                 </div>
 
                 <div class="filter-group">
-                    <label>Brightest Abs Mag Range</label>
+                    <label>Brightest abs mag range</label>
                     <div class="magnitude-range-group">
                         <input type="number" step="0.1" id="brightestAbsMagMin" placeholder="Min M">
                         <span class="range-separator">—</span>

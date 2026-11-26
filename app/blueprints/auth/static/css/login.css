@@ -19,7 +19,7 @@
 
 .login-header { text-align: center; margin-bottom: 24px; }
 .login-logo { width: 56px; height: 56px; margin-bottom: 12px; }
-.login-header h1 { margin: 0 0 4px; font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem); font-weight: 700; letter-spacing: -0.01em; color: var(--kw-text-white); }
+.login-header h1 { margin: 0 0 4px; font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem); font-weight: 600; letter-spacing: -0.01em; color: var(--kw-text-white); }
 .login-header p { margin: 0; color: var(--kw-text-muted); font-size: var(--kw-text-sm); }
 
 .google-login-btn {
@@ -67,4 +67,4 @@
 .login-card .field { display: flex; flex-direction: column; gap: 6px; }
 .login-card .field span { font-size: var(--kw-text-xs); font-weight: 600; color: var(--kw-text-secondary); letter-spacing: 0.02em; }
 .admin-input { min-height: 40px; }
-.admin-login-btn { width: 100%; }
+.admin-login-btn { width: 100%; min-height: 44px; font-size: 0.92rem; }

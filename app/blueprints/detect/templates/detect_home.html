@@ -25,8 +25,8 @@
     <div class="kw-page detect-home-container">
         {% block lead scoped %}
         <p class="kw-lead lead">
-            <strong>Daily Transient Event Cross-matching Tool.</strong> Every TNS report is screened against DESI's spectroscopic galaxies: <em>is it in a galaxy with a known
-            redshift, how luminous is it, and is it worth a large-telescope spectrum?</em>
+            <strong>Daily Transient Event Cross-matching Tool.</strong> Every TNS report is screened against DESI's spectroscopic galaxies: is it in a galaxy with a known
+            redshift, how luminous is it, and is it worth a large-telescope spectrum?
             The pipeline decides what it can and hands the rest to a person on the
             <a href="{{ day_url ~ latest_date if latest_date else '#' }}">review page</a>.
         </p>
@@ -39,7 +39,7 @@
                 {% if overview and overview.last_run %}
                 {% set c = overview.counts %}
                 <div class="overview-when">{{ overview.last_run }}<span class="overview-sub">
-                    {{ c.total }} objects screened</span></div>
+                    {{ c.total }} object{{ "s" if c.total != 1 }} screened</span></div>
                 <div class="overview-stats">
                     <a class="ov-stat ov-review" href="{{ day_url ~ overview.run_day }}">
                         <span class="ov-n">{{ c.review or 0 }}</span><span class="ov-l">need judgement</span></a>
@@ -118,7 +118,7 @@
                        class="archive-btn {% if item.count == 0 %}no-match{% endif %} {% if item.has_lens %}lens-match{% endif %}"
                        {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                         <span class="date">{{ item.date }}</span>
-                        <span class="count">{{ item.count }} targets</span>
+                        <span class="count">{{ item.count }} target{{ "s" if item.count != 1 }}</span>
                         {% if item.has_lens or item.lens_cand or item.slsn %}<span class="hl-row">{{ day_badges(item, small=true) }}</span>{% endif %}
                     </a>
                     {% endfor %}
@@ -127,7 +127,7 @@
 
                 {% if daily_counts|length > 9 %}
                 <div class="archive-btn-container">
-                    <a href="{{ archives_url }}" class="kw-btn all-archives-btn">All Archives</a>
+                    <a href="{{ archives_url }}" class="kw-btn all-archives-btn">All archives</a>
                 </div>
                 {% endif %}
 

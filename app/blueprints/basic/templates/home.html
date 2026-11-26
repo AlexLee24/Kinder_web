@@ -32,7 +32,7 @@
                     {% if _member %}
                     <a href="{{ url_for('detect.detect_results') }}" class="sh-btn sh-btn-ghost">DETECT Review</a>
                     {% else %}
-                    <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="sh-btn sh-btn-ghost">Plan Tonight</a>
+                    <a href="{{ url_for('astronomy_tools.interactive_planner') }}" class="sh-btn sh-btn-ghost">Plan tonight</a>
                     {% endif %}
                 </div>
             </div>
@@ -106,7 +106,7 @@
                 {% if session.user and session.user.is_admin %}
                 <button class="sh-btn home-upload-btn" id="homeUploadBtn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                    <span>Upload Image</span>
+                    <span>Upload image</span>
                 </button>
                 {% endif %}
             </div>
@@ -179,7 +179,7 @@
         <div class="home-edit-modal-backdrop home-modal-backdrop" id="homeEditModalBackdrop"></div>
         <div class="home-edit-modal-content home-modal-content" role="dialog" aria-modal="true" aria-labelledby="homeEditTitleHeading">
             <div class="home-edit-modal-header home-modal-header">
-                <h2 id="homeEditTitleHeading">Edit Image</h2>
+                <h2 id="homeEditTitleHeading">Edit image</h2>
                 <button class="home-edit-modal-close home-modal-close" id="homeEditModalClose" aria-label="Close">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -198,7 +198,7 @@
                     <input type="text" id="homeEditPhotographer" name="photographer" maxlength="50" />
                 </div>
                 <div class="home-edit-form-group home-form-group">
-                    <label for="homeEditSpan" class="home-form-label">Display Size</label>
+                    <label for="homeEditSpan" class="home-form-label">Display size</label>
                     <select id="homeEditSpan" name="span">
                         <option value="col-span-1 row-span-1">Normal (1x1)</option>
                         <option value="col-span-2 row-span-1">Wide (2x1)</option>
@@ -225,7 +225,7 @@
         <div class="home-upload-modal-backdrop home-modal-backdrop" id="homeUploadModalBackdrop"></div>
         <div class="home-upload-modal-content home-modal-content" role="dialog" aria-modal="true" aria-labelledby="homeUploadHeading">
             <div class="home-upload-modal-header home-modal-header">
-                <h2 id="homeUploadHeading">Upload Gallery Image</h2>
+                <h2 id="homeUploadHeading">Upload gallery image</h2>
                 <button class="home-upload-modal-close home-modal-close" id="homeUploadModalClose" aria-label="Close">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
@@ -257,7 +257,7 @@
                     <input type="text" id="homeUploadPhotographer" name="photographer" placeholder="Your name or credit" maxlength="50" />
                 </div>
                 <div class="home-form-group">
-                    <label for="homeUploadSpan" class="home-form-label">Display Size</label>
+                    <label for="homeUploadSpan" class="home-form-label">Display size</label>
                     <select id="homeUploadSpan" name="span">
                         <option value="col-span-1 row-span-1">Normal (1x1)</option>
                         <option value="col-span-2 row-span-1">Wide (2x1)</option>
@@ -277,7 +277,7 @@
             </form>
             <div id="homeSuccessMessage" class="home-message home-message-success" style="display: none;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                <p>Image uploaded successfully!</p>
+                <p>Image uploaded</p>
             </div>
             <div id="homeErrorMessage" class="home-message home-message-error" style="display: none;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>

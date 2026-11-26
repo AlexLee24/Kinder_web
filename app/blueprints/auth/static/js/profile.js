@@ -93,7 +93,7 @@ async function updateName(event) {
             // Update the input value for next time
             document.getElementById('newName').value = newName;
             
-            showNotification('Name updated successfully!', 'success');
+            showNotification('Name updated', 'success');
             closeEditNameModal();
         } else {
             showNotification('Error: ' + result.error, 'error');
@@ -194,7 +194,7 @@ async function uploadAvatar(event) {
                     }
                 });
 
-                showNotification('Profile picture updated successfully!', 'success');
+                showNotification('Profile picture updated', 'success');
             } else {
                 showNotification('Error updating picture: ' + result.error, 'error');
             }

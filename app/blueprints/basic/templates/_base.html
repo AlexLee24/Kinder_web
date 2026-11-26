@@ -52,6 +52,8 @@
     {% block after_main %}{% endblock %}
 
     <script src="{{ url_for('static', filename='js/shell.js') }}"></script>
+    {#- Icons: inline SVGs become PulsoIcon line icons that move on hover / focus (none with reduced motion) -#}
+    <script src="{{ url_for('static', filename='js/kinder_icons.js') }}" defer></script>
     {% if session.user %}<script src="{{ url_for('static', filename='js/notify.js') }}" defer></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>

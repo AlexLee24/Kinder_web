@@ -1,3 +1,5 @@
+// line icons for the review buttons and badges (kinder_icons.js animates the ones it knows)
+const _IC = {"ok": '<svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>', "no": '<svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>', "star": '<svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>', "redo": '<svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>'};
 'use strict';
 /* ═══════════════════════════════════════════════════════════════
    detect_results.js — DETECT review page
@@ -466,7 +468,7 @@ function _paintChecked(name, on) {
     document.querySelectorAll(`[data-check-name="${CSS.escape(name)}"]`).forEach(b => {
         b.classList.toggle('is-checked', on);
         b.setAttribute('aria-pressed', on ? 'true' : 'false');
-        b.textContent = on ? '✓ Checked' : 'Check';
+        b.innerHTML = on ? _IC.ok + ' Checked' : 'Check';
     });
     document.querySelectorAll(`[data-check-mark="${CSS.escape(name)}"]`).forEach(m => { m.hidden = !on; });
 }
@@ -633,8 +635,8 @@ function _bumpStat(status, delta) {
 
 function _statusBadge(status, hasHost) {
     if (status === 'snoozed' || status === 'finished')
-        return hasHost ? '<span class="badge-checked">✓ Done</span>' : '<span class="badge-nohost">✗ No host</span>';
-    if (status === 'followup') return '<span class="badge-followup">⬤ Follow-up</span>';
+        return hasHost ? '<span class="badge-checked">' + _IC.ok + ' Done</span>' : '<span class="badge-nohost">' + _IC.no + ' No host</span>';
+    if (status === 'followup') return '<span class="badge-followup"><span class="kw-dot" aria-hidden="true"></span> Follow-up</span>';
     return '<span class="badge-unreviewed">Pending</span>';
 }
 
@@ -658,12 +660,12 @@ function _renderCard(card) {
         } else if (done) {
             bar.innerHTML = `
                 <span class="action-lead">${hostId ? 'Closed with host accepted' : 'Closed as no host'}${pinned || rejected ? ' — your decision' : ''}.</span>
-                <button class="btn-decide btn-reopen" data-name="${_esc(name)}" onclick="decideReopen(this.dataset.name)" title="Back to pending (R)">↺ Reopen <kbd>R</kbd></button>`;
+                <button class="btn-decide btn-reopen" data-name="${_esc(name)}" onclick="decideReopen(this.dataset.name)" title="Back to pending (R)">${_IC.redo} Reopen <kbd>R</kbd></button>`;
         } else if (status === 'followup') {
             bar.innerHTML = `
                 <span class="action-lead">In follow-up${hostId ? ' with host ' + (pinned ? 'chosen by a reviewer' : 'from the rule') : ' without a host'}. DETECT re-screens it daily.</span>
-                <button class="btn-decide btn-done" data-name="${_esc(name)}" onclick="decideDone(this.dataset.name)" title="Close it (D)">✓ Done <kbd>D</kbd></button>
-                <button class="btn-decide btn-reopen" data-name="${_esc(name)}" onclick="decideReopen(this.dataset.name)" title="Back to pending (R)">↺ Reopen <kbd>R</kbd></button>`;
+                <button class="btn-decide btn-done" data-name="${_esc(name)}" onclick="decideDone(this.dataset.name)" title="Close it (D)">${_IC.ok} Done <kbd>D</kbd></button>
+                <button class="btn-decide btn-reopen" data-name="${_esc(name)}" onclick="decideReopen(this.dataset.name)" title="Back to pending (R)">${_IC.redo} Reopen <kbd>R</kbd></button>`;
         } else {
             let lead;
             if (pinned)            lead = 'Host chosen by you — now decide:';
@@ -671,11 +673,11 @@ function _renderCard(card) {
             else if (hostId)       lead = 'Accept the rule\'s pick (#1) and decide, or set another row as host:';
             else if (hs === 'review') lead = 'Set host on a candidate row if the image supports it, otherwise:';
             else                   lead = 'No galaxy contains it. Close it, or set host on a row if the image disagrees:';
-            const nohostLabel = hostId ? '✗ No host' : '✗ No host · close';
+            const nohostLabel = _IC.no + (hostId ? ' No host' : ' No host · close');
             bar.innerHTML = `
                 <span class="action-lead">${lead}</span>
-                <button class="btn-decide btn-followup" data-name="${_esc(name)}" onclick="decideFollowup(this.dataset.name)" title="Follow-up (F)${hostId ? ' — accepts the host' : ''}">★ Follow-up <kbd>F</kbd></button>
-                <button class="btn-decide btn-done ${hostId ? '' : 'btn-quiet'}" data-name="${_esc(name)}" onclick="decideDone(this.dataset.name)" title="Done (D)${hostId ? ' — accepts the host, no follow-up' : ''}">✓ Done <kbd>D</kbd></button>
+                <button class="btn-decide btn-followup" data-name="${_esc(name)}" onclick="decideFollowup(this.dataset.name)" title="Follow-up (F)${hostId ? ' — accepts the host' : ''}">${_IC.star} Follow-up <kbd>F</kbd></button>
+                <button class="btn-decide btn-done ${hostId ? '' : 'btn-quiet'}" data-name="${_esc(name)}" onclick="decideDone(this.dataset.name)" title="Done (D)${hostId ? ' — accepts the host, no follow-up' : ''}">${_IC.ok} Done <kbd>D</kbd></button>
                 <button class="btn-decide btn-nohost ${hostId ? 'btn-quiet' : ''}" data-name="${_esc(name)}" onclick="decideNoHost(this.dataset.name)" title="None of the candidates is the host (N)">${nohostLabel} <kbd>N</kbd></button>`;
         }
     }
@@ -690,7 +692,7 @@ function _renderCard(card) {
         r.classList.toggle('row-is-host', isHost);
         let html = '';
         if (isHost) {
-            html += `<span class="badge-host" title="${_esc(mine ? 'Chosen by ' + (by || 'a reviewer') : 'DETECT rule v1')}">✓ HOST${mine ? ' · you' : ''}</span>`;
+            html += `<span class="badge-host" title="${_esc(mine ? 'Chosen by ' + (by || 'a reviewer') : 'DETECT rule v1')}">${_IC.ok} Host${mine ? ' · you' : ''}</span>`;
         } else if (CAN_EDIT && !done) {
             const z = r.dataset.matchZ || '';
             const kind = r.dataset.ruleKind;

@@ -86,7 +86,7 @@
             display: inline-flex;
             align-items: center;
             gap: 5px;
-            font-size: .74rem;
+            font-size: max(.74rem, 11px);
             padding: 4px 8px;
             border-radius: 999px;
             background: rgba(255,255,255,0.08);
@@ -108,7 +108,7 @@
         }
         .pressure-score {
             font-size: 2rem;
-            font-weight: 700;
+            font-weight: 600;
             letter-spacing: -0.03em;
             line-height: 1;
             color: var(--kw-text-white);
@@ -119,7 +119,7 @@
             border-radius: 999px;
             padding: 4px 10px;
             font-size: .8rem;
-            font-weight: 700;
+            font-weight: 600;
             margin-top: 8px;
         }
         .pressure-badge.low { background: rgba(63,185,80,.15); color: #8ae896; }
@@ -204,12 +204,12 @@
     <div id="actionBanner" class="banner warn" style="display:none;"></div>
 
     <section class="kw-panel">
-        <div class="kw-panel-head"><h2>Pressure Guide (Beginner Friendly)</h2></div>
+        <div class="kw-panel-head"><h2>Pressure guide</h2></div>
         <div class="pressure-grid">
             <div class="kw-inset pressure-box">
-                <div class="muted" style="font-size:.82rem;">Pressure Score</div>
+                <div class="muted" style="font-size:.82rem;">Pressure score</div>
                 <div class="pressure-score" id="pressureScore">0</div>
-                <div id="pressureLevel" class="pressure-badge low">LOW</div>
+                <div id="pressureLevel" class="pressure-badge low">Low</div>
                 <div class="muted" style="margin-top:8px;font-size:.8rem;">0 = calm, 100 = overloaded</div>
             </div>
             <div class="kw-inset pressure-box">
@@ -223,10 +223,10 @@
 
     <section class="kw-panel">
         <div class="kw-panel-head">
-            <h2>Recommended Actions</h2>
+            <h2>Recommended actions</h2>
             <div class="row-actions">
-                <button class="kw-btn kw-btn-sm" id="cancelRecommendedBtn" onclick="runRecommended('cancel')" disabled>Cancel Recommended</button>
-                <button class="kw-btn kw-btn-sm kw-btn-danger" id="terminateRecommendedBtn" onclick="runRecommended('terminate')" disabled>Terminate Recommended</button>
+                <button class="kw-btn kw-btn-sm" id="cancelRecommendedBtn" onclick="runRecommended('cancel')" disabled>Cancel recommended</button>
+                <button class="kw-btn kw-btn-sm kw-btn-danger" id="terminateRecommendedBtn" onclick="runRecommended('terminate')" disabled>Terminate recommended</button>
             </div>
         </div>
         <div class="helper-note">
@@ -275,7 +275,7 @@
             <table class="kw-table">
                 <thead>
                     <tr>
-                        <th class="checkbox-cell">✓</th>
+                        <th class="checkbox-cell" aria-label="Select"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></th>
                         <th>PID</th>
                         <th>User</th>
                         <th>App</th>
@@ -350,10 +350,10 @@
         }
 
         function classifyPressure(score) {
-            if (score >= 75) return { label: 'CRITICAL', cls: 'critical' };
-            if (score >= 50) return { label: 'HIGH', cls: 'high' };
-            if (score >= 25) return { label: 'MODERATE', cls: 'moderate' };
-            return { label: 'LOW', cls: 'low' };
+            if (score >= 75) return { label: 'Critical', cls: 'critical' };
+            if (score >= 50) return { label: 'High', cls: 'high' };
+            if (score >= 25) return { label: 'Moderate', cls: 'moderate' };
+            return { label: 'Low', cls: 'low' };
         }
 
         function isBlockingWaitType(waitType) {

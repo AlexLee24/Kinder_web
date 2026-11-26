@@ -38,7 +38,7 @@
 .profile-name-row h1 {
     margin: 0;
     font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem);
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.2;
     color: var(--kw-text-white);
@@ -50,7 +50,7 @@
 
 .profile-facts { display: flex; gap: 10px; margin: 0; }
 .profile-facts > div { min-width: 104px; padding: 12px 14px; border-radius: var(--kw-radius-lg); background: var(--kw-card-bg-2); border: 1px solid var(--kw-border); text-align: center; }
-.profile-facts dt { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--kw-text-muted); }
+.profile-facts dt { font-size: max(0.75rem, 11px); color: var(--kw-text-muted); }
 .profile-facts dd { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 0; font-size: 1.05rem; font-weight: 400; color: #fff; white-space: nowrap; }
 
 .profile-note {
@@ -84,7 +84,7 @@
 .api-empty span { flex: 1 1 220px; }
 
 .api-key-hint { font-family: var(--kw-font-mono); }
-.api-last-used { font-size: 0.78rem; color: var(--kw-text-muted); }
+.api-last-used { font-size: max(0.78rem, 11px); color: var(--kw-text-muted); }
 .sessions-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 10px 0 0; padding-top: 12px; border-top: 1px solid var(--kw-hairline); font-size: 0.82rem; color: rgba(255, 255, 255, 0.6); }
 .sessions-row > .kw-btn-ghost { margin-right: -10px; }   /* ghost text lines up with the right-aligned values above */
 .info-list dd a { color: var(--kw-accent); }
@@ -105,11 +105,11 @@
 .group-item-row.is-member .group-icon { color: var(--kw-accent-contrast); background: var(--kw-accent); border-color: transparent; }
 .group-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .group-name { font-size: 0.95rem; font-weight: 400; color: #fff; }
-.group-members { font-size: 0.78rem; color: rgba(255, 255, 255, 0.55); line-height: 1.45; }
+.group-members { font-size: max(0.78rem, 11px); color: rgba(255, 255, 255, 0.55); line-height: 1.45; }
 .group-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* Edit-name dialog */
-.char-counter { align-self: flex-end; font-size: 0.74rem; color: var(--kw-text-muted); }
+.char-counter { align-self: flex-end; font-size: max(0.74rem, 11px); color: var(--kw-text-muted); }
 
 /* ── Responsive ───────────────────────────────────────────────── */
 @media (max-width: 960px) {

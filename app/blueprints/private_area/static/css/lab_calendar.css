@@ -11,7 +11,7 @@
 .lc-c-slate  { --lc: #B8C0D0; --lc-bg: rgba(160, 170, 190, 0.16); }
 .lc-c-pink   { --lc: #F39CCB; --lc-bg: rgba(240, 120, 180, 0.16); }
 .lc-c-teal   { --lc: #5FD3D3; --lc-bg: rgba(56, 190, 190, 0.15); }
-.lc-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 500; line-height: 1.2; white-space: nowrap; background: var(--lc-bg); color: var(--lc); }
+.lc-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 9px; border-radius: 999px; font-size: max(0.72rem, 11px); font-weight: 500; line-height: 1.2; white-space: nowrap; background: var(--lc-bg); color: var(--lc); }
 .lc-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--lc); flex-shrink: 0; }
 
 /* ── Layout ── */
@@ -43,15 +43,15 @@
 .lc-hl-main { grid-area: main; display: flex; flex-direction: column; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .lc-hl-main:hover .lc-hl-title { color: var(--kw-accent); }
 .lc-hl-title { font-size: 0.88rem; font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lc-hl-sub { font-size: 0.76rem; color: var(--kw-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.lc-hl-sub { font-size: max(0.76rem, 11px); color: var(--kw-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .lc-hl-sub:empty { display: none; }
-.lc-hl-when { grid-area: when; font-size: 0.74rem; font-weight: 600; color: var(--kw-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lc-hl-when { grid-area: when; font-size: max(0.74rem, 11px); font-weight: 600; color: var(--kw-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .lc-hl-when.is-today { padding: 2px 9px; border-radius: 999px; color: var(--kw-accent); background: var(--kw-accent-dim); }
 .lc-rep { display: inline-flex; color: var(--kw-text-muted); }
 .lc-rep svg, .lc-time svg { width: 12px; height: 12px; }
 
 .lc-sync .kw-panel-desc { margin: -2px 0 10px; font-size: 0.8rem; }
-.lc-sync-state { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; font-size: 0.78rem; color: var(--kw-text-secondary); }
+.lc-sync-state { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0; font-size: max(0.78rem, 11px); color: var(--kw-text-secondary); }
 
 /* ── Filters ── */
 .lc-tools { display: flex; flex-direction: column; gap: 12px; }
@@ -65,17 +65,17 @@
 .lc-past-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--kw-text-muted); cursor: pointer; }
 .lc-past-toggle[hidden] { display: none; }
 .lc-count { font-size: 0.8rem; color: var(--kw-text-muted); }
-.lc-tz-tag { display: inline-flex; align-items: center; min-height: 28px; padding: 0 11px; border: 1px solid var(--kw-border); border-radius: 999px; font-size: 0.78rem; font-weight: 600; color: var(--kw-text-secondary); white-space: nowrap; cursor: help; }
+.lc-tz-tag { display: inline-flex; align-items: center; min-height: 28px; padding: 0 11px; border: 1px solid var(--kw-border); border-radius: 999px; font-size: max(0.78rem, 11px); font-weight: 600; color: var(--kw-text-secondary); white-space: nowrap; cursor: help; }
 .lc-count a { color: var(--kw-link); }
 
 /* ── Month view ── */
 .lc-pager { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.lc-pager-title { flex: 1; margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--kw-text-white); text-align: center; }
+.lc-pager-title { flex: 1; margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--kw-text-white); text-align: center; }
 .lc-pager .kw-icon-btn svg { width: 18px; height: 18px; }
 .lc-pager .kw-icon-btn:disabled { opacity: 0.3; cursor: default; }
 .lc-cal-grid { display: flex; flex-direction: column; border: 1px solid var(--kw-border); border-radius: var(--kw-radius-md); overflow: hidden; }
 .lc-cal-head { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--kw-border); }
-.lc-cal-wd { padding: 7px 0; text-align: center; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); }
+.lc-cal-wd { padding: 7px 0; text-align: center; font-size: max(0.72rem, 11px); font-weight: 600; color: var(--kw-text-muted); }
 .lc-cal-wd.is-we { color: #E0788B; }
 /* a week: the days behind (borders, today, click = add), the day numbers and the event bars on top in lanes.
    lab_calendar.js fitMonth() sets the grid's min-height on wide screens; the weeks share it */
@@ -92,11 +92,11 @@
 .lc-cal-num { min-width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 999px; font-size: 0.82rem; font-weight: 600; color: var(--kw-text-secondary); font-variant-numeric: tabular-nums; }
 .lc-cal-day.is-out .lc-cal-num { color: var(--kw-text-faint); font-weight: 400; }
 .lc-cal-day.is-past .lc-cal-num { color: var(--kw-text-muted); font-weight: 500; }
-.lc-cal-day.is-today .lc-cal-num { background: var(--kw-accent); color: var(--kw-accent-contrast); font-weight: 700; }
-.lc-cal-nolot { overflow: hidden; padding: 1px 6px; border-radius: 999px; background: rgba(255, 69, 58, 0.14); color: #FF8A80; font-size: 0.64rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; pointer-events: auto; cursor: help; }
+.lc-cal-day.is-today .lc-cal-num { background: var(--kw-accent); color: var(--kw-accent-contrast); font-weight: 600; }
+.lc-cal-nolot { overflow: hidden; padding: 1px 6px; border-radius: 999px; background: rgba(255, 69, 58, 0.14); color: #FF8A80; font-size: max(0.64rem, 11px); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; pointer-events: auto; cursor: help; }
 /* event bars */
 .lc-bar { display: flex; align-items: center; min-width: 0; min-height: 0; height: 24px; margin: 0 4px; padding: 0 8px; border: 0; border-radius: 6px;
-          background: var(--lc-bg); color: var(--lc); font: 600 0.75rem/1 var(--kw-font-sans); text-align: left; cursor: pointer; pointer-events: auto; }
+          background: var(--lc-bg); color: var(--lc); font: 600 max(0.75rem, 11px)/1 var(--kw-font-sans); text-align: left; cursor: pointer; pointer-events: auto; }
 .lc-bar > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .lc-bar:hover { filter: brightness(1.2); }
 .lc-bar:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 1px; }
@@ -113,17 +113,17 @@
 /* Trigger duty on nights LOT takes no triggers (Lulin schedule): struck through, striped */
 .lc-bar.is-struck { background: repeating-linear-gradient(135deg, rgba(242, 201, 76, 0.13) 0 6px, rgba(242, 201, 76, 0.04) 6px 12px); color: rgba(242, 201, 76, 0.75); }
 .lc-bar.is-struck > span { text-decoration: line-through; text-decoration-color: #FF8A80; text-decoration-thickness: 2px; }
-.lc-hint { margin: 10px 0 0; font-size: 0.74rem; color: var(--kw-text-faint); }
-.lc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none; font-size: 0.74rem; color: var(--kw-text-muted); }
+.lc-hint { margin: 10px 0 0; font-size: max(0.74rem, 11px); color: var(--kw-text-faint); }
+.lc-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 12px 0 0; padding: 0; list-style: none; font-size: max(0.74rem, 11px); color: var(--kw-text-muted); }
 .lc-legend li { display: inline-flex; align-items: center; gap: 6px; }
-.lc-legend .lc-bar { display: inline-flex; height: 16px; margin: 0; padding: 0 6px; font-size: 0.64rem; cursor: default; pointer-events: none; }
+.lc-legend .lc-bar { display: inline-flex; height: 16px; margin: 0; padding: 0 6px; font-size: max(0.64rem, 11px); cursor: default; pointer-events: none; }
 .lc-legend .lc-bar.is-timed { padding: 0; }
 .lc-legend .lc-cal-nolot { cursor: default; }
 @media (max-width: 640px) {   /* phones: thin coloured bars, no words */
     .lc-wk { min-height: 64px; }
     .lc-wk-fg { grid-template-rows: 24px; grid-auto-rows: 6px; row-gap: 3px; }
     .lc-cal-day { justify-content: center; padding: 0 2px; }
-    .lc-cal-num { min-width: 22px; height: 22px; line-height: 22px; font-size: 0.76rem; }
+    .lc-cal-num { min-width: 22px; height: 22px; line-height: 22px; font-size: max(0.76rem, 11px); }
     .lc-cal-nolot { display: none; }
     .lc-cal-grid .lc-wk .lc-bar { min-height: 0; height: 6px; margin: 0 2px; padding: 0; border-radius: 3px; background: var(--lc); box-shadow: none; }
     .lc-wk .lc-bar > span, .lc-wk .lc-bar::before { display: none; }
@@ -139,9 +139,9 @@
 .lc-timeline[hidden], .lc-month-view[hidden] { display: none; }
 .lc-timeline.hide-past .lc-card.is-past, .lc-timeline.hide-past .lc-month.is-all-past { display: none; }
 .lc-month-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.lc-month-num { font-size: 2.2rem; font-weight: 700; line-height: 1; letter-spacing: -0.04em; color: var(--kw-text-muted); opacity: 0.35; font-variant-numeric: tabular-nums; }
+.lc-month-num { font-size: 2.2rem; font-weight: 600; line-height: 1; letter-spacing: -0.04em; color: var(--kw-text-muted); opacity: 0.35; font-variant-numeric: tabular-nums; }
 .lc-month-name { margin: 0; font-size: 1rem; font-weight: 600; color: var(--kw-text-white); }
-.lc-month-count { font-size: 0.76rem; color: var(--kw-text-muted); }
+.lc-month-count { font-size: max(0.76rem, 11px); color: var(--kw-text-muted); }
 .lc-list { display: flex; flex-direction: column; border-top: 1px solid var(--kw-hairline); }
 .lc-card { display: flex; gap: 12px; padding: 12px 8px; border-bottom: 1px solid var(--kw-hairline); border-radius: var(--kw-radius-lg); scroll-margin-top: 90px; transition: background-color var(--kw-transition-fast); }
 .lc-card:last-child { border-bottom: 0; }
@@ -150,14 +150,14 @@
 .lc-card.is-today { background: var(--kw-accent-dim); }
 .lc-card.is-flash { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
 .lc-card-date { display: flex; flex-direction: column; align-items: center; justify-content: center; align-self: flex-start; width: 52px; flex-shrink: 0; padding: 6px 0; border-radius: var(--kw-radius-md); }
-.lc-card-day { font-size: 1.6rem; font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.lc-card-wd { margin-top: 4px; font-size: 0.74rem; color: var(--kw-text-muted); }
+.lc-card-day { font-size: 1.6rem; font-weight: 600; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.lc-card-wd { margin-top: 4px; font-size: max(0.74rem, 11px); color: var(--kw-text-muted); }
 .lc-card.is-today .lc-card-date { background: var(--kw-accent); color: var(--kw-accent-contrast); }
 .lc-card.is-today .lc-card-wd { color: inherit; opacity: 0.8; }
 .lc-card-body { flex: 1; min-width: 0; }
 .lc-card-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-.lc-time { display: inline-flex; align-items: center; gap: 4px; font-size: 0.76rem; color: var(--kw-text-secondary); font-variant-numeric: tabular-nums; }
-.lc-remaining { margin-left: auto; font-size: 0.76rem; color: var(--kw-text-muted); white-space: nowrap; }
+.lc-time { display: inline-flex; align-items: center; gap: 4px; font-size: max(0.76rem, 11px); color: var(--kw-text-secondary); font-variant-numeric: tabular-nums; }
+.lc-remaining { margin-left: auto; font-size: max(0.76rem, 11px); color: var(--kw-text-muted); white-space: nowrap; }
 .lc-card.is-today .lc-remaining { color: var(--kw-accent); }
 .lc-card-title { margin: 0 0 2px; font-size: 1rem; font-weight: 600; line-height: 1.4; }
 .lc-card-title button { padding: 0; border: 0; background: none; color: var(--kw-text-white); font: inherit; text-align: left; cursor: pointer; }
@@ -165,7 +165,7 @@
 .lc-card-desc { margin: 2px 0 0; max-width: 70ch; font-size: 0.82rem; line-height: 1.6; color: var(--kw-text-secondary); white-space: pre-line; }
 .lc-card-loc { display: flex; align-items: center; gap: 5px; margin: 4px 0 0; font-size: 0.8rem; color: var(--kw-text-secondary); }
 .lc-card-loc svg { width: 13px; height: 13px; flex-shrink: 0; }
-.lc-note { margin: 0; max-width: 72ch; font-size: 0.76rem; line-height: 1.6; color: var(--kw-text-muted); }
+.lc-note { margin: 0; max-width: 72ch; font-size: max(0.76rem, 11px); line-height: 1.6; color: var(--kw-text-muted); }
 @media (max-width: 480px) {
     .lc-card { gap: 8px; padding: 12px 4px; }
     .lc-card-date { width: 44px; }
@@ -179,7 +179,7 @@
 .lc-ev-meta svg { width: 16px; height: 16px; margin-top: 2px; color: var(--kw-text-muted); }
 .lc-ev-meta a { color: var(--kw-link); word-break: break-all; }
 .lc-ev-desc { white-space: pre-line; line-height: 1.6; color: var(--kw-text-primary); }
-.lc-ev-by { font-size: 0.76rem; color: var(--kw-text-muted); }
+.lc-ev-by { font-size: max(0.76rem, 11px); color: var(--kw-text-muted); }
 .lc-ev-actions { flex-wrap: wrap; }
 .lc-ev-actions .lc-spacer { flex: 1; }
 
@@ -196,10 +196,10 @@
 .lc-form .lc-form-row.lc-not-duty { display: grid; }
 .lc-form-tz { margin: -4px 0 4px; }
 .lc-form.is-allday .lc-form-tz { display: none; }
-.lc-field-hint { align-self: end; margin: 0 0 6px; font-size: 0.76rem; line-height: 1.4; color: var(--kw-text-muted); }
+.lc-field-hint { align-self: end; margin: 0 0 6px; font-size: max(0.76rem, 11px); line-height: 1.4; color: var(--kw-text-muted); }
 .lc-week-pick { font-size: 0.8rem; font-weight: 600; color: #F2C94C; }
-.lc-form-hint { margin: -6px 0 14px; font-size: 0.78rem; line-height: 1.55; color: var(--kw-text-muted); }
-.lc-form-note { margin: 0 0 8px; font-size: 0.78rem; color: var(--kw-text-muted); }
+.lc-form-hint { margin: -6px 0 14px; font-size: max(0.78rem, 11px); line-height: 1.55; color: var(--kw-text-muted); }
+.lc-form-note { margin: 0 0 8px; font-size: max(0.78rem, 11px); color: var(--kw-text-muted); }
 .lc-form-err { margin: 0; padding: 8px 12px; border-radius: var(--kw-radius-md); background: rgba(255, 69, 58, 0.14); color: #FF8A80; font-size: 0.82rem; }
 .lc-form-err[hidden], .lc-form-note[hidden] { display: none; }
 .lc-form-del { margin-right: auto; }
@@ -214,58 +214,66 @@
 .lc-sub-item:hover { border-color: var(--kw-border-med); background: rgba(255, 255, 255, 0.07); }
 .lc-sub-item > span:last-child { display: flex; flex-direction: column; gap: 2px; }
 .lc-sub-item b { font-size: 0.9rem; font-weight: 600; }
-.lc-sub-item small { font-size: 0.76rem; color: var(--kw-text-muted); }
+.lc-sub-item small { font-size: max(0.76rem, 11px); color: var(--kw-text-muted); }
 .lc-sub-ic { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.9); color: #111; }
 .lc-sub-ic svg { width: 20px; height: 20px; }
 .lc-sub-url { margin-bottom: 8px; }
 .lc-sub-url-row { display: flex; gap: 8px; }
-.lc-sub-url-row input { flex: 1; min-width: 0; font-family: var(--kw-font-mono); font-size: 0.78rem; }
-.lc-sub-warn { margin: 0; font-size: 0.76rem; line-height: 1.6; color: var(--kw-text-muted); }
+.lc-sub-url-row input { flex: 1; min-width: 0; font-family: var(--kw-font-mono); font-size: max(0.78rem, 11px); }
+.lc-sub-warn { margin: 0; font-size: max(0.76rem, 11px); line-height: 1.6; color: var(--kw-text-muted); }
 .lc-linkbtn { padding: 0; border: 0; background: none; color: var(--kw-link); font: inherit; text-decoration: underline; cursor: pointer; }
 
 /* Daily Trigger's Calendar dialog (the next two weeks; daily_trigger.html) */
 .lc-mini { list-style: none; margin: 0; padding: 0; }
 .lc-mini-day { padding: 8px 0; border-top: 1px solid var(--kw-hairline); }
 .lc-mini-day:first-child { border-top: 0; }
-.lc-mini-d { margin: 0 0 4px; font-size: 0.75rem; font-weight: 600; color: var(--kw-text-muted); }
+.lc-mini-d { margin: 0 0 4px; font-size: max(0.75rem, 11px); font-weight: 600; color: var(--kw-text-muted); }
 .lc-mini-day.is-today .lc-mini-d { color: var(--kw-accent); }
 .lc-mini-ev { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 0.86rem; color: var(--kw-text-primary); }
 .lc-mini-ev .lc-chip { flex-shrink: 0; }
 .lc-mini-ev small { color: var(--kw-text-muted); }
 /* a Lulin night that closes LOT to triggers (lab_calendar.closes_lot) */
-.lc-nolot, .lc-mini-ev small.lc-nolot { display: inline-block; padding: 1px 7px; border-radius: 999px; background: rgba(255, 69, 58, 0.16); color: #FF8A80; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
-.lc-duty-nolot { display: block; margin-top: 6px; color: #FF8A80; font-size: 0.78rem; }
+.lc-nolot, .lc-mini-ev small.lc-nolot { display: inline-block; padding: 1px 7px; border-radius: 999px; background: rgba(255, 69, 58, 0.16); color: #FF8A80; font-size: max(0.7rem, 11px); font-weight: 600; white-space: nowrap; }
+.lc-duty-nolot { display: block; margin-top: 6px; color: #FF8A80; font-size: max(0.78rem, 11px); }
 
 /* Trigger duty panel (side column) */
 .lc-duty { border-color: rgba(242, 201, 76, 0.35); }
 .lc-duty .kw-panel-head { margin-bottom: 8px; }
 .lc-duty-tonight { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--kw-radius-lg); background: rgba(242, 201, 76, 0.1); }
-.lc-duty-tonight b { font-size: 1.05rem; font-weight: 700; color: #F2C94C; }
+.lc-duty-tonight b { font-size: 1.05rem; font-weight: 600; color: #F2C94C; }
 .lc-duty-tonight b .lc-linkbtn { color: inherit; text-decoration: none; font-weight: inherit; }
 .lc-duty-tonight b .lc-linkbtn:hover { text-decoration: underline; }
 .lc-duty-who { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.lc-duty-who span { font-size: 0.74rem; color: var(--kw-text-muted); white-space: nowrap; }
+.lc-duty-who span { font-size: max(0.74rem, 11px); color: var(--kw-text-muted); white-space: nowrap; }
 .lc-duty-who span.is-ok { color: #5FCF9A; }
 .lc-duty-who span.is-bad { color: #FF8A80; }
-.lc-duty-tonight small { font-size: 0.76rem; color: var(--kw-text-secondary); }
+.lc-duty-tonight small { font-size: max(0.76rem, 11px); color: var(--kw-text-secondary); }
 .lc-duty-none { color: var(--kw-text-muted) !important; font-weight: 500 !important; }
 .lc-weeks-h { margin: 12px 0 4px; }
 .lc-weeks { list-style: none; margin: 0; padding: 0; }
 .lc-week { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; padding: 5px 2px; border-top: 1px solid var(--kw-hairline); font-size: 0.82rem; }
 .lc-week:first-child { border-top: 0; }
 .lc-week-d { display: flex; flex-direction: column; color: var(--kw-text-secondary); white-space: nowrap; }
-.lc-week-d small { font-size: 0.68rem; color: var(--kw-text-faint); }
+.lc-week-d small { font-size: max(0.68rem, 11px); color: var(--kw-text-faint); }
 .lc-week.is-now .lc-week-d { color: var(--kw-text-white); }
 .lc-week-who { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 6px; text-align: right; }
 .lc-week-who .lc-linkbtn { color: var(--kw-text-white); font-weight: 600; text-decoration: none; }
 .lc-week-who .lc-linkbtn:hover { color: #F2C94C; }
 .lc-week.is-mine .lc-week-who .lc-linkbtn { color: #F2C94C; }
-.lc-week-who small { width: 100%; font-size: 0.7rem; color: #FF8A80; }
-.lc-week-out { padding: 0; border: 0; background: none; color: var(--kw-text-muted); font: inherit; font-size: 0.72rem; text-decoration: underline; cursor: pointer; }
+.lc-week-who small { width: 100%; font-size: max(0.7rem, 11px); color: #FF8A80; }
+.lc-week-out { padding: 0; border: 0; background: none; color: var(--kw-text-muted); font: inherit; font-size: max(0.72rem, 11px); text-decoration: underline; cursor: pointer; }
 .lc-week-out:hover { color: #FF8A80; }
 .lc-week.is-open .lc-week-d { color: #FF8A80; }
-.lc-week-assign { max-width: 104px; min-height: 28px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--kw-border); background: transparent; color: var(--kw-text-muted); font: inherit; font-size: 0.72rem; cursor: pointer; }
+.lc-week-assign { max-width: 104px; min-height: 28px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--kw-border); background: transparent; color: var(--kw-text-muted); font: inherit; font-size: max(0.72rem, 11px); cursor: pointer; }
 .lc-week-assign:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Phones: every week reads the same way, dates on one line and Volunteer / Assign under them (a short date
+   used to pull its buttons up beside it while longer ones stacked) */
+@media (max-width: 560px) {
+    .lc-week { flex-wrap: wrap; gap: 6px 10px; padding: 8px 2px; }
+    .lc-week-d { flex: 1 1 100%; }
+    .lc-week-who { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; justify-content: flex-start; text-align: left; }
+    .lc-week-assign { max-width: none; flex: 1 1 0; min-width: 0; min-height: 44px; }
+}
 .lc-volunteer { border-color: rgba(242, 201, 76, 0.5); color: #F2C94C; }
 
 /* Daily Trigger page bar: tonight's Trigger duty */
@@ -275,7 +283,7 @@
 .dt-night { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: 999px;
             background: rgba(120, 140, 255, 0.12); border: 1px solid rgba(120, 140, 255, 0.28); color: #c9d2ff; font-size: 0.8rem; white-space: nowrap; }
 .dt-night b { font-family: var(--kw-font-mono, monospace); font-weight: 600; color: #fff; font-size: 0.86rem; }
-.dt-night-sun { color: var(--kw-text-muted); font-size: 0.74rem; }
+.dt-night-sun { color: var(--kw-text-muted); font-size: max(0.74rem, 11px); }
 @media (max-width: 1100px) { .dt-night-sun { display: none; } }
 @media (max-width: 560px) { .dt-night-l { display: none; } }
 /* phones: the bar's chips wrap inside the screen (the row was wider than the screen and cut off on the left) */
