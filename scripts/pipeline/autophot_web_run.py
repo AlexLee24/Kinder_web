@@ -463,6 +463,19 @@ def main():
     except Exception as e:
         print(f'[web] VizieR check skipped: {e}', flush=True)
     per_band = {str(b): str(c) for b, c in (cfg_in.get('catalog_bands') or {}).items() if b and c}
+    gaia_bands = sorted(b for b, c in per_band.items() if c == 'gaia')
+    if gaia_bands:
+        # AutoPhOT stops the whole run when a catalogue query returns nothing: a Gaia archive that is down (DR4
+        # maintenance, 2026-11-25) must cost only the bands calibrated against Gaia XP, not every band
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import autophot_templates as _kt
+        if not _kt.gaia_cached(cfg_in['wdir'], cfg_in.get('target') or cfg_in.get('name')):
+            ok, why = _kt.gaia_reachable()
+            if not ok:
+                for b in gaia_bands:
+                    per_band.pop(b)
+                print(f'[web] Gaia archive not answering ({why}): {" ".join(gaia_bands)} not calibrated in this run '
+                      '(measured, no zero point)', flush=True)
     if per_band:                                      # 主星表沒有的波段（Pan-STARRS 沒有 u）→ AutoPhOT 的逐波段對照
         config['catalog']['use_catalog'] = {'default': config['catalog']['use_catalog'],
                                             **{b: 'panstarrs' if c == 'pan_starrs' else c for b, c in per_band.items()}}
