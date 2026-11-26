@@ -35,12 +35,28 @@ def daily_trigger():
 
     duty = tonight_duty()
     from app.services.lab_calendar import lot_closed_tonight
+    night = tonight_dark()
 
     return render_template('daily_trigger.html', current_path='/daily_trigger', all_groups=all_groups,
                             user_display_name=user_display_name, user_email=user_email,
                             app_debug=config.DEBUG, duty=duty, lot_closed=lot_closed_tonight(),
                             on_duty=any(d['email'].lower() == user_email.lower() for d in duty),
-                            duty_lock=duty_lock(duty), filter_colors=filter_colors.all_colors())
+                            duty_lock=duty_lock(duty), filter_colors=filter_colors.all_colors(), night=night)
+
+
+def tonight_dark():
+    """Tonight's (the trigger night's, turning over at 08:00) sunset, astronomical night and sunrise at Lulin, as
+    HH:MM UTC+8 strings; None when it cannot be computed."""
+    try:
+        from datetime import date as _date
+
+        from app.services import lab_calendar
+        from app.services.planning.trigger_send import _trigger_day_key
+        n = lab_calendar.lulin_night(_date.fromisoformat(_trigger_day_key()))
+        return {k: v.strftime('%H:%M') for k, v in n.items()}
+    except Exception:
+        logger.exception('daily_trigger: Lulin night not computed')
+        return None
 
 
 def tonight_duty():

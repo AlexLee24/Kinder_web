@@ -272,6 +272,14 @@
 .dt-duty { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: rgba(242, 201, 76, 0.14); color: #F2C94C; font-size: 0.8rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .dt-duty:hover { background: rgba(242, 201, 76, 0.22); }
 .dt-duty.is-me { background: #F2C94C; color: #1a1400; }
+.dt-night { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: 999px;
+            background: rgba(120, 140, 255, 0.12); border: 1px solid rgba(120, 140, 255, 0.28); color: #c9d2ff; font-size: 0.8rem; white-space: nowrap; }
+.dt-night b { font-family: var(--kw-font-mono, monospace); font-weight: 600; color: #fff; font-size: 0.86rem; }
+.dt-night-sun { color: var(--kw-text-muted); font-size: 0.74rem; }
+@media (max-width: 1100px) { .dt-night-sun { display: none; } }
+@media (max-width: 560px) { .dt-night-l { display: none; } }
+/* phones: the bar's chips wrap inside the screen (the row was wider than the screen and cut off on the left) */
+@media (max-width: 768px) { .sh-pagebar-r:has(.dt-night) { min-width: 0; max-width: 100%; justify-content: center; } }
 .dt-duty.is-none { background: rgba(255, 255, 255, 0.07); color: var(--kw-text-muted); font-weight: 500; }
 /* phones: the page bar shrinks icon buttons to the icon; the duty pill keeps its words */
 .sh-pagebar .sh-pagebar-r a.dt-duty { width: auto; min-width: 0; height: 32px; padding: 0 12px; gap: 6px; font-size: 0.8rem; }
