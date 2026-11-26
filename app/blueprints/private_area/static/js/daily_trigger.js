@@ -556,7 +556,7 @@ function _renderAutoPlan() {
         html += '<div class="pa-auto-plan-head">' + (!autoChosen ? 'Picked filters: ' + _fmtSec(total) + ' · '
             : isAutoExposure ? 'Total ' + _fmtSec(total) + ' at the telescope · ' : 'Not auto: the filters below are your own · ') +
             'highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr +
-            (res.snr_auto ? ' (auto: brightest ' + Number(res.brightest).toFixed(2) + (res.brightest <= 19 ? ' ≤ 19' : ' > 19') + ')' : '') + '</div>';
+            (res.snr_auto ? ' (auto)' : '') + '</div>';
         const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
         const src = f => day(f.mjd) + ' \u00b7 ' + (f.source || '');
         const from = f => f.from !== 'set' && f.mjd == null ? 'typed above' : ({         // a typed magnitude has no date

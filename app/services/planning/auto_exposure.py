@@ -29,7 +29,7 @@ PLANS = {'all': ALL, 'gri': ('gp', 'rp', 'ip'), 'gr': ('gp', 'rp'), 'r': ('rp',)
 DEFAULT_SNR = 20.0
 # S/N when the target sets none (the user's rule, 2026-11-26): from its brightest magnitude in the plan
 AUTO_SNR_SPLIT_MAG = 19.0
-AUTO_SNR_BRIGHT, AUTO_SNR_FAINT = 10.0, 20.0     # brightest <= 19 mag: S/N 10; fainter: S/N 20
+AUTO_SNR_BRIGHT = AUTO_SNR_FAINT = 10.0     # blank S/N: always 10 (user rule 2026-11-26; was 20 fainter than 19 mag)
 
 
 def auto_snr(mags):
