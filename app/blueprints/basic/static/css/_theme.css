@@ -34,7 +34,7 @@
     --kw-font-sans:   "TASA Explorer", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
     --kw-font-system: var(--kw-font-sans);
     --kw-font-mono:   ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    --kw-text-xs:   0.75rem;   /* 12 */
+    --kw-text-xs:   max(0.75rem, 11px);   /* 12 (11 on phones) */
     --kw-text-sm:   0.875rem;  /* 14 */
     --kw-text-md:   1rem;      /* 16 */
     --kw-text-lg:   1.125rem;  /* 18 */
@@ -144,6 +144,13 @@ body {
 }
 
 ::selection { background: var(--kw-accent-dim); color: var(--kw-text-white); }
+/* Inline line icons that stand in for text marks (check, cross, star…): text height, on the baseline */
+.kw-ic-i { width: 1em; height: 1em; flex: none; vertical-align: -0.14em; }
+.flag-btn.active .kw-ic-i, .is-flagged .kw-ic-i { fill: currentColor; }
+/* A status dot in place of a "⬤" character */
+.kw-dot { display: inline-block; width: 0.55em; height: 0.55em; border-radius: 50%; background: currentColor; vertical-align: 0.08em; }
+/* One emphasis weight: bold text and headings are 600 unless a page sets otherwise (zero specificity) */
+:where(b, strong, h1, h2, h3, h4, h5, h6) { font-weight: 600; }
 
 /* ── Base control ergonomics (zero-specificity so page CSS still wins) ── */
 :where(button, [type="button"], [type="submit"], [type="reset"], .btn) {
@@ -268,7 +275,7 @@ body {
 .kw-eyebrow {
     display: inline-block;
     margin-bottom: 6px;
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     font-weight: 600;
     color: var(--kw-accent);
 }
@@ -280,7 +287,7 @@ body {
     line-height: 1.2;
     color: var(--kw-text-white);
 }
-.kw-page-head h1 .kw-count { margin-left: 6px; font-size: 0.6em; font-weight: 400; color: var(--kw-text-muted); }
+.kw-page-head h1 .kw-count { margin-left: 6px; font-size: max(0.6em, 11px); font-weight: 400; color: var(--kw-text-muted); }
 .kw-page-head p { margin: 8px 0 0; max-width: 620px; font-size: 0.9rem; line-height: 1.6; color: var(--kw-text-secondary); }
 .kw-page-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -363,13 +370,14 @@ body {
     min-width: 18px; height: 18px; padding: 0 6px;
     display: inline-flex; align-items: center; justify-content: center;
     border-radius: 999px;
-    font-size: 0.7rem; font-weight: 600; line-height: 1;
+    font-size: max(0.7rem, 11px); font-weight: 600; line-height: 1;
     background: rgba(255, 255, 255, 0.1); color: var(--kw-text-secondary);
 }
 .kw-n.is-alert { background: rgba(255, 123, 114, 0.2); color: #FF9F98; }
 
 /* ── KPI tiles, mini stats ── */
 .kw-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 560px) { .kw-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } }   /* phones: two figures a row, not one card per screen line */
 .kw-kpi {
     display: flex;
     flex-direction: column;
@@ -387,9 +395,9 @@ body {
 }
 button.kw-kpi { cursor: pointer; }
 a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
-.kw-kpi-label { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--kw-text-muted); }
+.kw-kpi-label { display: flex; align-items: center; gap: 6px; font-size: max(0.75rem, 11px); color: var(--kw-text-muted); }
 .kw-kpi b { margin: 4px 0 2px; font-size: 1.9rem; font-weight: 600; line-height: 1.1; color: var(--kw-text-white); font-variant-numeric: tabular-nums; }
-.kw-kpi small { font-size: 0.74rem; color: var(--kw-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-kpi small { font-size: max(0.74rem, 11px); color: var(--kw-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kw-kpi.is-alert { border-color: var(--kw-accent-border); }
 .kw-kpi.is-alert b { color: var(--kw-accent); }
 
@@ -400,7 +408,7 @@ a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
     border-radius: var(--kw-radius-md);
     background: var(--kw-card-bg);
     border: 1px solid var(--kw-border);
-    font-size: 0.68rem; color: var(--kw-text-muted);
+    font-size: max(0.68rem, 11px); color: var(--kw-text-muted);
 }
 .kw-mini-stats b { font-size: 1.15rem; font-weight: 600; line-height: 1.3; color: var(--kw-text-white); font-variant-numeric: tabular-nums; }
 
@@ -424,11 +432,11 @@ a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
     color: var(--kw-text-white);
 }
 .kw-panel-head h2 svg, .kw-panel-head h3 svg { width: 16px; height: 16px; color: var(--kw-accent); flex-shrink: 0; }
-.kw-panel-meta { font-size: 0.74rem; color: var(--kw-text-muted); }
-.kw-panel-head a.kw-panel-link { font-size: 0.78rem; color: var(--kw-accent); text-decoration: none; }
+.kw-panel-meta { font-size: max(0.74rem, 11px); color: var(--kw-text-muted); }
+.kw-panel-head a.kw-panel-link { font-size: max(0.78rem, 11px); color: var(--kw-accent); text-decoration: none; }
 .kw-panel-head a.kw-panel-link:hover { color: var(--kw-accent-hover); }
 .kw-panel-desc { margin: -4px 0 14px; font-size: 0.84rem; line-height: 1.6; color: var(--kw-text-secondary); }
-.kw-panel-desc code { font-family: var(--kw-font-mono); font-size: 0.8em; padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
+.kw-panel-desc code { font-family: var(--kw-font-mono); font-size: max(0.8em, 11px); padding: 1px 6px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
 .kw-panel-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
 
 .kw-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; color: var(--kw-text-primary); text-decoration: none; }
@@ -436,9 +444,9 @@ a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
 a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .kw-row-main b { font-size: 0.88rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kw-row-main small { font-size: 0.75rem; color: var(--kw-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-row-main small { font-size: max(0.75rem, 11px); color: var(--kw-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kw-row-trail { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.kw-row-time { font-size: 0.72rem; color: var(--kw-text-faint); white-space: nowrap; }
+.kw-row-time { font-size: max(0.72rem, 11px); color: var(--kw-text-faint); white-space: nowrap; }
 
 /* ── Data table ── */
 .kw-table-wrap {
@@ -451,7 +459,7 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-table th, .kw-table td { padding: 11px 14px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--kw-hairline); }
 .kw-table thead th {
     padding-top: 12px; padding-bottom: 12px;
-    font-size: 0.75rem; font-weight: 600;
+    font-size: max(0.75rem, 11px); font-weight: 600;
     color: var(--kw-text-secondary);
     background: rgba(255, 255, 255, 0.03);
     border-bottom: 1px solid var(--kw-border);
@@ -515,7 +523,7 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
     font: 400 0.82rem var(--kw-font-sans);
     cursor: pointer;
 }
-.kw-select.kw-select-sm { min-height: 30px; font-size: 0.78rem; padding-left: 12px; }
+.kw-select.kw-select-sm { min-height: 30px; font-size: max(0.78rem, 11px); padding-left: 12px; }
 
 /* Toggle: <label class="kw-switch"><input type="checkbox"><span></span></label> */
 .kw-switch { position: relative; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -527,7 +535,7 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-switch input:focus-visible + span { box-shadow: var(--kw-focus-ring); }
 
 .kw-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-.kw-field label, .kw-label { font-size: 0.78rem; color: var(--kw-text-secondary); }
+.kw-field label, .kw-label { font-size: max(0.78rem, 11px); color: var(--kw-text-secondary); }
 .kw-field :is(input, select, textarea) { width: 100%; min-height: 40px; }
 .kw-field textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
 
@@ -536,7 +544,7 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
     display: inline-flex; align-items: center; gap: 5px;
     min-height: 20px; padding: 2px 9px;
     border-radius: 999px;
-    font-size: 0.72rem; font-weight: 500; line-height: 1.2;
+    font-size: max(0.72rem, 11px); font-weight: 500; line-height: 1.2;
     white-space: nowrap;
     background: rgba(255, 255, 255, 0.08);
     color: var(--kw-text-secondary);
@@ -558,7 +566,7 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
     border: 1px solid var(--kw-border-med);
     color: var(--kw-accent); font-weight: 600; font-size: 0.85rem;
 }
-.kw-avatar-sm { width: 28px; height: 28px; font-size: 0.72rem; }
+.kw-avatar-sm { width: 28px; height: 28px; font-size: max(0.72rem, 11px); }
 .kw-avatar-lg { width: 56px; height: 56px; font-size: 1.2rem; }
 .kw-avatar-stack { display: inline-flex; }
 .kw-avatar-stack .kw-avatar { margin-left: -8px; box-shadow: 0 0 0 2px var(--color-bg); }

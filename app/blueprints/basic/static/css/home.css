@@ -61,7 +61,7 @@ body.home-page *, body.home-page *::before, body.home-page *::after { box-sizing
 @media (max-width: 560px) { .col-span-2 { grid-column: span 1; } .home-gallery-grid { grid-auto-rows: 160px; } }
 
 /* ── Footer ───────────────────────────────────────────────────── */
-.home-footer { border-top: 1px solid var(--kw-border); padding: 24px clamp(16px, 3vw, 32px) 40px; color: var(--kw-text-muted); font-size: 0.75rem; }
+.home-footer { border-top: 1px solid var(--kw-border); padding: 24px clamp(16px, 3vw, 32px) 40px; color: var(--kw-text-muted); font-size: max(0.75rem, 11px); }
 .home-footer-inner { max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; }
 .home-footer a { display: inline-flex; align-items: center; min-height: 32px; color: var(--kw-text-secondary); text-decoration: none; }   /* 32px tap height, row height unchanged */
 .home-footer a:hover { color: #fff; }
@@ -181,7 +181,7 @@ body.shell .sh-hello.main-banner {
 .sh-scrollcue {
     position: absolute; z-index: 2; left: 50%; bottom: 10px; transform: translateX(-50%);
     display: flex; flex-direction: column; align-items: center; gap: 2px;
-    font-size: 0.78rem; color: rgba(255, 255, 255, 0.7); text-decoration: none; opacity: calc(1 - var(--hp, 0) * 3);
+    font-size: max(0.78rem, 11px); color: rgba(255, 255, 255, 0.7); text-decoration: none; opacity: calc(1 - var(--hp, 0) * 3);
 }
 .sh-scrollcue svg { animation: sh-bob 1.8s ease-in-out infinite; }
 @keyframes sh-bob { 50% { transform: translateY(5px); } }

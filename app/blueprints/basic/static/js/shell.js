@@ -231,7 +231,8 @@
         }
         update();
     }
-    document.querySelectorAll('.sh-pagebar :is(.kw-tabbar, .kw-seg, .sh-views), .sh-top .sh-tabs').forEach(scrollableStrip);
+    // also the admin menu, a sideways row of pills on phones: it opens scrolled to the page you are on
+    document.querySelectorAll('.sh-pagebar :is(.kw-tabbar, .kw-seg, .sh-views), .sh-top .sh-tabs, .admin-nav').forEach(scrollableStrip);
 
     // ── 5) Leaving a page with an Aladin sky view in an iframe (object page, ePESSTO++): Aladin Lite 3.8.2
     //    inside an iframe keeps the tab from receiving the next page — it stays on "loading" forever. Sending

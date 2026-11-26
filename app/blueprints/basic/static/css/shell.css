@@ -82,7 +82,7 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5)); }
 .sh-brand-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.1; }
 .sh-brand-txt b { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; color: #fff; transition: color 0.15s; }
-.sh-brand-txt small { margin-top: 2px; font-size: 0.75rem; font-weight: 500; color: var(--color-accent); white-space: nowrap; }
+.sh-brand-txt small { margin-top: 2px; font-size: max(0.75rem, 11px); font-weight: 500; color: var(--color-accent); white-space: nowrap; }
 
 /* ── Left rail ── */
 .sh-rail {
@@ -97,7 +97,7 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
 .sh-rail-btn {
     width: 56px; padding: 8px 0 6px; border-radius: 12px;
     display: flex; flex-direction: column; align-items: center; gap: 3px;
-    color: var(--color-text-secondary); font-size: 0.66rem; line-height: 1.1; text-decoration: none;
+    color: var(--color-text-secondary); font-size: max(0.66rem, 11px); line-height: 1.1; text-decoration: none;
     transition: background-color 0.15s, color 0.15s;
 }
 .sh-rail-btn .sh-ic { width: 22px; height: 22px; }
@@ -120,7 +120,7 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
 .sh-rail-item:hover .sh-fly, .sh-rail-item:focus-within .sh-fly, .sh-rail-item.is-open .sh-fly {
     opacity: 1; visibility: visible; transform: none; transition: opacity 0.15s, transform 0.15s;
 }
-.sh-fly-h { font-size: 0.72rem; color: var(--color-text-secondary); padding: 4px 10px 6px; }
+.sh-fly-h { font-size: max(0.72rem, 11px); color: var(--color-text-secondary); padding: 4px 10px 6px; }
 .sh-fly a {
     display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px;
     font-size: 0.88rem; color: var(--color-text); white-space: nowrap; text-decoration: none; transition: background-color 0.12s;
@@ -201,7 +201,7 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
 .sh-user.is-open .sh-user-menu { opacity: 1; visibility: visible; transform: none; transition: opacity 0.15s, transform 0.15s; }
 .sh-user-head { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px 10px; }
 .sh-user-head b { font-size: 0.95rem; font-weight: 600; }
-.sh-user-head > span:not(.sh-user-roles) { font-size: 0.78rem; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.sh-user-head > span:not(.sh-user-roles) { font-size: max(0.78rem, 11px); color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
 .sh-user-roles { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .sh-user-menu a {
     display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px;
@@ -216,7 +216,7 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
 .sh-app-card img { width: 40px; height: 40px; border-radius: 10px; flex: none; }
 .sh-app-card span { display: flex; flex-direction: column; line-height: 1.25; }
 .sh-app-card b { font-size: 0.9rem; font-weight: 600; }
-.sh-app-card small { font-size: 0.76rem; color: var(--color-text-muted); }
+.sh-app-card small { font-size: max(0.76rem, 11px); color: var(--color-text-muted); }
 .sh-user-sep { height: 1px; margin: 6px 4px; background: var(--color-border-subtle); }
 .sh-user-group { display: flex; flex-direction: column; gap: 1px; }
 .sh-phone-only { display: none !important; }
@@ -325,7 +325,7 @@ body.shell .flash-message-container { top: calc(var(--kw-nav-h) + 8px); }
     }
     html.kw-typing .sh-rail { transform: translateY(150%); }
     .sh-rail-item { flex: 1; display: flex; justify-content: center; position: static; }
-    .sh-rail-btn { width: 100%; height: 100%; justify-content: center; border-radius: 16px; font-size: 0.68rem; }
+    .sh-rail-btn { width: 100%; height: 100%; justify-content: center; border-radius: 16px; font-size: max(0.68rem, 11px); }
     .sh-rail-sp, .sh-rail-admin, .sh-rail-settings, .sh-rail-about { display: none !important; }   /* Admin: account menu; Settings, About: More */
     .sh-fly, .sh-rail-sp ~ .sh-rail-item .sh-fly {
         left: 0; right: 0; top: auto; bottom: calc(100% + 10px); min-width: 0; max-height: min(64vh, 520px); overflow-y: auto;
@@ -361,8 +361,10 @@ body.shell .flash-message-container { top: calc(var(--kw-nav-h) + 8px); }
     .sh-pagebar-r { order: 2; margin-left: auto; }
     .sh-pagebar-l:empty, .sh-pagebar-r:empty { display: none; }
     body.shell .sh-pagebar-c > * { max-width: 100%; }
-    .sh-pagebar-r :is(a, button):has(> svg):not(.kw-seg-item) { font-size: 0; gap: 0; width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; }
-    .sh-pagebar-r :is(a, button):has(> svg):not(.kw-seg-item) > svg { width: 18px; height: 18px; }
+    /* secondary actions shrink to their icon; the page's primary action keeps its words (an orange square says nothing) */
+    .sh-pagebar-r :is(a, button):has(> svg):not(.kw-seg-item):not(.kw-btn-primary) { font-size: 0; gap: 0; width: 44px; min-width: 44px; height: 44px; padding: 0; justify-content: center; }
+    .sh-pagebar-r :is(a, button):has(> svg):not(.kw-seg-item):not(.kw-btn-primary) > svg { width: 18px; height: 18px; }
+    .sh-pagebar-r .kw-btn-primary { min-height: 44px; }
 
     .sh-spin {
         position: fixed; left: 50%; top: 50%; z-index: 1401; display: flex; align-items: center; gap: 10px;
@@ -460,7 +462,7 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 .kw-pwa-banner img { width: 44px; height: 44px; border-radius: 11px; flex-shrink: 0; }
 .kw-pwa-banner-txt { flex: 1; min-width: 0; line-height: 1.35; }
 .kw-pwa-banner-txt b { display: block; font-size: 0.9rem; font-weight: 600; }
-.kw-pwa-banner-txt small { display: block; font-size: 0.76rem; color: var(--kw-text-secondary); }
+.kw-pwa-banner-txt small { display: block; font-size: max(0.76rem, 11px); color: var(--kw-text-secondary); }
 .kw-pwa-banner-acts { display: flex; gap: 6px; flex-shrink: 0; }
 @media (max-width: 860px) {
     .kw-pwa-banner { bottom: calc(var(--kw-dock-h) + 12px + env(safe-area-inset-bottom, 0px)); flex-wrap: wrap; }
@@ -484,7 +486,7 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 .kw-pwa-guide-head b { font-size: 1.02rem; font-weight: 600; }
 .kw-pwa-guide-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .kw-pwa-guide-steps li { display: flex; align-items: center; gap: 10px; font-size: 0.88rem; line-height: 1.5; }
-.kw-pwa-step-n { flex: 0 0 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--kw-accent); color: var(--kw-accent-contrast); font-size: 0.74rem; font-weight: 700; }
+.kw-pwa-step-n { flex: 0 0 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--kw-accent); color: var(--kw-accent-contrast); font-size: max(0.74rem, 11px); font-weight: 600; }
 .kw-pwa-step-ico { flex: 0 0 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--kw-surface); color: var(--kw-accent); }
 .kw-pwa-step-ico svg { width: 18px; height: 18px; }
 .kw-pwa-guide-acts { display: flex; justify-content: flex-end; margin-top: 18px; }
@@ -504,7 +506,7 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 .sh-notif-badge {
     position: absolute; top: 3px; right: 1px; min-width: 17px; height: 17px; padding: 0 5px; box-sizing: border-box;
     display: inline-flex; align-items: center; justify-content: center; border-radius: 999px;
-    background: var(--color-accent); color: var(--color-accent-text); font: 700 0.64rem/1 var(--kw-font-sans);
+    background: var(--color-accent); color: var(--color-accent-text); font: 600 max(0.64rem, 11px)/1 var(--kw-font-sans);
     box-shadow: 0 0 0 2px var(--color-bg, #07061a);
 }
 .sh-notif-badge[hidden] { display: none; }
@@ -519,7 +521,7 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 .sh-notif.is-open .sh-notif-panel { opacity: 1; visibility: visible; transform: none; transition: opacity 0.15s, transform 0.15s; }
 .sh-notif-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 12px 8px 16px; border-bottom: 1px solid var(--color-border-subtle); }
 .sh-notif-head b { font-size: 0.92rem; font-weight: 600; color: var(--color-text); }
-.sh-notif-head button { min-height: 0; padding: 4px 7px; border: 0; border-radius: 6px; background: none; color: var(--color-accent); font: 500 0.74rem/1.2 var(--kw-font-sans); cursor: pointer; }
+.sh-notif-head button { min-height: 0; padding: 4px 7px; border: 0; border-radius: 6px; background: none; color: var(--color-accent); font: 500 max(0.74rem, 11px)/1.2 var(--kw-font-sans); cursor: pointer; }
 .sh-notif-head button:hover { background: var(--color-accent-soft); }
 .sh-notif-head button.is-danger { color: var(--color-text-muted); }
 .sh-notif-head button.is-danger:hover { color: #FF8A80; background: rgba(255, 69, 58, 0.12); }
@@ -538,8 +540,8 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 .sh-notif-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .sh-notif-title { font-size: 0.84rem; line-height: 1.4; overflow-wrap: anywhere; }
 .sh-notif-item.is-unread .sh-notif-title { font-weight: 600; }
-.sh-notif-sub { font-size: 0.76rem; line-height: 1.4; color: var(--color-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.sh-notif-time { font-size: 0.7rem; color: var(--color-text-faint, rgba(245, 245, 247, 0.36)); }
+.sh-notif-sub { font-size: max(0.76rem, 11px); line-height: 1.4; color: var(--color-text-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sh-notif-time { font-size: max(0.7rem, 11px); color: var(--color-text-faint, rgba(245, 245, 247, 0.36)); }
 .sh-notif-del {
     position: absolute; top: 28px; right: 6px; width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center; background: none; color: var(--color-text-muted);
@@ -549,7 +551,7 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
 .sh-notif-row:hover .sh-notif-del, .sh-notif-del:focus-visible { opacity: 1; }
 .sh-notif-del:hover { background: rgba(255, 69, 58, 0.15); color: #FF8A80; }
 @media (hover: none) { .sh-notif-del { opacity: 0.6; } }
-.sh-notif-hint { display: block; margin: 0 4px 4px; padding: 9px 12px; border-radius: 10px; background: var(--color-accent-soft); color: var(--color-accent); font-size: 0.78rem; text-decoration: none; }
+.sh-notif-hint { display: block; margin: 0 4px 4px; padding: 9px 12px; border-radius: 10px; background: var(--color-accent-soft); color: var(--color-accent); font-size: max(0.78rem, 11px); text-decoration: none; }
 .sh-notif-hint[hidden] { display: none; }
 .sh-notif-foot { display: block; padding: 11px; border-top: 1px solid var(--color-border-subtle); text-align: center; font-size: 0.8rem; color: var(--color-text-secondary); text-decoration: none; }
 .sh-notif-foot:hover { color: var(--color-text); background: var(--sh-hover); }
