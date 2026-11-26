@@ -32,6 +32,39 @@ def _coord_error(data):
     return None
 
 
+def _auto_exposure(data, telescope):
+    """(auto, snr, plan choice, CASTOR result or None, error) for a target being saved: an SLT target with auto
+    exposure gets tonight's plan now (and every day after, auto_exposure.update_all); with no photometry on Kinder
+    and no magnitude typed it cannot use auto exposure."""
+    from app.services.planning import auto_exposure as ae
+    auto = bool(data.get('auto_exposure', False)) and telescope != 'LOT'
+    try:
+        snr = float(data.get('auto_snr') or ae.DEFAULT_SNR)
+    except (TypeError, ValueError):
+        snr = 0
+    if not 3 <= snr <= 500:
+        return auto, None, None, None, 'Target S/N must be a number between 3 and 500.'
+    choice = ','.join(ae.selection(data.get('auto_plan')))
+    if not auto:
+        return False, snr, choice, None, None
+    try:
+        res = ae.compute(data.get('name'), _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec')),
+                         data.get('mag'), snr, choice)
+    except ae.NoMagnitude as e:
+        return auto, snr, choice, None, str(e)
+    except Exception:
+        logger.exception('auto exposure for %s', data.get('name'))
+        return auto, snr, choice, None, 'Could not compute the auto exposure plan (CASTOR).'
+    return auto, snr, choice, res, None
+
+
+def _store_auto_result(target_id, res):
+    from app.db.obs import set_auto_exposure_result
+    from app.services.planning.auto_exposure import latest_mag
+    if res is not None:
+        set_auto_exposure_result(target_id, res, filters=res['plan'] or None, mag=latest_mag(res))
+
+
 @private_area_bp.route('/api/targets', methods=['GET', 'POST'])
 @login_required
 def api_observation_targets():
@@ -56,9 +89,9 @@ def api_observation_targets():
         if _err:
             return jsonify({'error': _err}), 400
         _telescope = (data.get('telescope') or '').strip().upper()
-        _auto_exp = bool(data.get('auto_exposure', False))
-        if _telescope == 'LOT':
-            _auto_exp = False
+        _auto_exp, _snr, _choice, _res, _aerr = _auto_exposure(data, _telescope)
+        if _aerr:
+            return jsonify({'error': _aerr}), 400
         new_id = save_observation_target(
             telescope=data.get('telescope'),
             name=data.get('name'),
@@ -68,6 +101,8 @@ def api_observation_targets():
             priority=data.get('priority'),
             repeat_count=data.get('repeat_count', 0),
             auto_exposure=_auto_exp,
+            auto_snr=_snr,
+            auto_plan=_choice,
             filters=data.get('filters', []),
             plan=data.get('plan'),
             program=data.get('program'),
@@ -76,7 +111,8 @@ def api_observation_targets():
         )
 
         if new_id:
-            return jsonify({'success': True, 'id': new_id})
+            _store_auto_result(new_id, _res)
+            return jsonify({'success': True, 'id': new_id, 'auto_result': _res})
         else:
             return jsonify({'error': 'Database error'}), 500
 
@@ -162,9 +198,9 @@ def api_observation_target_update(target_id):
     if _err:
         return jsonify({'error': _err}), 400
     _tele_put = (data.get('telescope') or '').strip().upper()
-    _auto_exp_put = bool(data.get('auto_exposure', False))
-    if _tele_put == 'LOT':
-        _auto_exp_put = False
+    _auto_exp_put, _snr, _choice, _res, _aerr = _auto_exposure(data, _tele_put)
+    if _aerr:
+        return jsonify({'error': _aerr}), 400
     if update_observation_target(
         target_id=target_id,
         telescope=data.get('telescope'),
@@ -175,12 +211,15 @@ def api_observation_target_update(target_id):
         priority=data.get('priority'),
         repeat_count=data.get('repeat_count', 0),
         auto_exposure=_auto_exp_put,
+        auto_snr=_snr,
+        auto_plan=_choice,
         filters=data.get('filters', []),
         plan=data.get('plan'),
         program=data.get('program'),
         note_gl=data.get('note_gl', '')
     ):
-        return jsonify({'success': True})
+        _store_auto_result(target_id, _res)
+        return jsonify({'success': True, 'auto_result': _res})
     else:
         return jsonify({'error': 'Database error'}), 500
 
@@ -238,6 +277,12 @@ def api_search_target():
                                   apply_permissions=True,
                                   viewer_email=session['user'].get('email') or None,
                                   viewer_is_admin=bool(session['user'].get('is_admin')))
+        try:                    # Newest Mag: the latest detection, as the daily update and auto exposure use
+            from app.services.planning.auto_exposure import latest_by_object
+            latest = latest_by_object([r['name'] for r in rows])
+        except Exception:
+            logger.exception('latest magnitudes for the target search')
+            latest = {}
         results = []
         for r in rows:
             results.append({
@@ -248,7 +293,7 @@ def api_search_target():
                 'ra': r.get('ra'),
                 'dec': r.get('declination'),
                 'redshift': r.get('redshift'),
-                'mag': r.get('brightest_mag') or r.get('discoverymag'),
+                'mag': latest.get(r['name']) or r.get('brightest_mag') or r.get('discoverymag'),
                 'type': r.get('type') or '',
                 'internal_names': r.get('internal_names') or '',
             })
@@ -258,32 +303,18 @@ def api_search_target():
         logger.error('Search error: %s', e)
         return jsonify({'results': []})
 
-@private_area_bp.route('/api/auto_exposure')
+@private_area_bp.route('/api/auto_exposure', methods=['POST'])
 @login_required
 def api_auto_exposure():
-    """Return auto exposure config from observation_script lookup table"""
-
-    mag = request.args.get('mag', '').strip()
-    telescope = request.args.get('telescope', 'SLT').strip()
-    if not mag:
-        return jsonify({'error': 'mag parameter required'}), 400
-
-    try:
-        from app.services.planning.observation_script import exposure_time
-        result = exposure_time(mag)
-        if isinstance(result, str):
-            # "Too faint to observe" or "Invalid magnitude"
-            return jsonify({'error': result})
-
-        # result is dict like {"up": "60sec*1", "gp": "30sec*1", ...}
-        filters = []
-        for filt, val in result.items():
-            parts = val.replace('sec*', ' ').split()
-            exp = int(parts[0])
-            count = int(parts[1])
-            filters.append({'filter': filt, 'exp': exp, 'count': count})
-
-        return jsonify({'success': True, 'filters': filters, 'telescope': telescope})
-    except Exception as e:
-        logger.error('Auto exposure error: %s', e)
-        return jsonify({'error': 'Auto exposure lookup failed'}), 500
+    """Tonight's CASTOR auto exposure plan for the target form (not saved): {name, ra, dec, mag, auto_snr,
+    auto_plan} -> the result of app.services.planning.auto_exposure.compute."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Invalid JSON body'}), 400
+    _err = _coord_error(data)
+    if _err:
+        return jsonify({'error': _err}), 400
+    _, _, _, res, err = _auto_exposure({**data, 'auto_exposure': True}, 'SLT')
+    if err:
+        return jsonify({'error': err}), 400
+    return jsonify({'success': True, 'result': res})

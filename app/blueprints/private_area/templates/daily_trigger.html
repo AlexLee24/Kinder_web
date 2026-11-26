@@ -877,11 +877,18 @@
 
                 <!-- Auto exposure button -->
                 <div id="slt-auto-exp-container" class="pa-auto-exp-container">
-                    <button type="button" id="btn-auto-exp" onclick="applyAutoExposure()" class="pa-btn-auto-exp">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                        Auto Exposure
-                    </button>
-                    <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
+                    <div class="pa-auto-exp-row">
+                        <button type="button" id="btn-auto-exp" onclick="applyAutoExposure()" class="pa-btn-auto-exp">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                            Auto Exposure
+                        </button>
+                        <label class="pa-auto-snr" for="obs-auto-snr">Target S/N
+                            <input type="number" id="obs-auto-snr" value="20" min="3" max="500" step="1" onchange="onAutoSnrChange()">
+                        </label>
+                        <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
+                    </div>
+                    <p class="pa-auto-exp-help">CASTOR plans each filter for this S/N, from the target's latest magnitude in that filter on Kinder (else its latest in any filter, else the magnitude above), at its highest tonight. Updated every day after last night's photometry.</p>
+                    <div id="auto-exp-plan" class="pa-auto-plan" hidden></div>
                 </div>
 
                 <!-- Observation Configuration -->
