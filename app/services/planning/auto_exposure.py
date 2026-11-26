@@ -28,9 +28,13 @@ ALL = tuple(sf for sf, _, _ in BANDS)
 PLANS = {'all': ALL, 'gr': ('gp', 'rp'), 'r': ('rp',)}       # the shorter plans offered when the pick runs long
 DEFAULT_SNR = 20.0
 MAX_TOTAL_S = 30 * 60          # a plan longer than this at the telescope is flagged
-# Shortest frame: CASTOR would give a bright target 15 s frames, but a frame that short holds too few field stars
-# for AutoPhOT's zero point and template alignment (AT2026afqt z, 2026-11-25: 5 stars in 8')
-MIN_EXP_S = 60
+# Shortest frame per filter: CASTOR answers for the target alone and would give a 17 mag target 60 s or less, but
+# template subtraction needs field stars to align on. What SLT frames did, 2026-11-15..25 auto photometry: z TS
+# needs ~19 mag (3 sigma) of depth: 150 s failed 2 of 3 (16.8-16.9 mag), 300 s worked 4 of 6 (the 2 failures were a
+# Pan-STARRS alignment, 19.4-19.7 mag deep), stacks always; g r i at 150 s always worked (60 s never tried); u is
+# stacked two by two at 300 s. A target bright enough to saturate gets shorter frames (SAT_MARGIN).
+MIN_EXP_S = {'up': 300, 'gp': 150, 'rp': 150, 'ip': 150, 'zp': 300}
+FRAME_STEPS = (150,)          # frame lengths besides CASTOR's own (150 s: what SLT has been taking)
 SAT_MARGIN = 0.7              # a frame at most 70% of CASTOR's saturation time for the target
 SITE, TELESCOPE, CAMERA = 'lulin', 'SLT', 'SLT_DZ936'      # the SLT camera since 2026-11-03
 LULIN = ('120:52:21.5', '23:28:10.0', 2800)
@@ -182,8 +186,11 @@ def _fwhm(cat):
         return 1.4
 
 
-def plan_filter(castor_filter, ra, dec, mag, snr, when):
-    """CASTOR's plan for one filter: {'status', 'exp', 'count', 'elapsed', 'snr'} (exp None when no frame works)."""
+def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None):
+    """CASTOR's plan for one filter, frames at least min_exp s (default: MIN_EXP_S of that filter):
+    {'status', 'exp', 'count', 'elapsed', 'snr', 'sat_s'} (exp None when no frame works)."""
+    if min_exp is None:
+        min_exp = next((MIN_EXP_S[sf] for sf, _, cf in BANDS if cf == castor_filter), 60)
     plan, cat = _castor()
     kw = dict(site=SITE, telescope=TELESCOPE, camera=CAMERA, optic_filter=castor_filter, ra=float(ra), dec=float(dec),
               mag=float(mag), observing_time_utc=when.isoformat().replace('+00:00', 'Z'), fwhm=_fwhm(cat))
@@ -191,12 +198,13 @@ def plan_filter(castor_filter, ra, dec, mag, snr, when):
     rec, status = r.get('recommended'), r.get('status')
     if not rec:
         return {'status': status, 'exp': None, 'count': None, 'elapsed': None, 'snr': None}
-    # longer frames than CASTOR's, up to MIN_EXP_S, but never into saturation: the target's peak pixel must stay below
+    # longer frames than CASTOR's, up to min_exp, but never into saturation: the target's peak pixel must stay below
     # full well with SAT_MARGIN to spare (better seeing than the median 1.4" puts more light in the peak)
     t_sat = float(r['conditions'].get('saturation_time_s') or 0)
     # (CASTOR's own pick can sit just under saturation too: mag 11 in r, 15 s of a 17.4 s limit)
-    want = max(rec['exp_s'], MIN_EXP_S)
-    safe = [t for t in sorted(set(plan.SHORT_EXPOSURES) | set(plan.PREFERRED_EXPOSURES)) if t <= want and t < t_sat * SAT_MARGIN]
+    want = max(rec['exp_s'], min_exp)
+    steps = set(plan.SHORT_EXPOSURES) | set(plan.PREFERRED_EXPOSURES) | set(FRAME_STEPS)
+    safe = [t for t in sorted(steps) if t <= want and t < t_sat * SAT_MARGIN]
     if safe and safe[-1] != rec['exp_s']:
         t = safe[-1]
         rec = plan.compute_snr(cat, **kw, single_exp_time=t, num_exposures=max(1, math.ceil(rec['total_s'] / t)))['chosen']

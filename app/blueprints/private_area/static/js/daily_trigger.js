@@ -501,7 +501,7 @@ function _renderAutoPlan() {
     if (!box) return;
     if (!autoPanelOpen && !autoResult) { box.hidden = true; box.innerHTML = ''; return; }
     const res = autoResult && autoResult.filters ? autoResult : null;
-    const band = sf => sf.replace(/p$/, '');
+    const band = sf => sf;           // the script's filter names, as in the filter rows below: up gp rp ip zp
     const allOn = autoSel.length === AUTO_ALL.length;
     const cb = (val, label, checked, t) => '<label class="pa-auto-opt"><input type="checkbox" value="' + val + '"' + (checked ? ' checked' : '') +
         ' onchange="_autoPick(this.value, this.checked)"> ' + escapeHtml(label) + (t ? ' <span class="pa-auto-t">' + escapeHtml(t) + '</span>' : '') + '</label>';
@@ -1245,7 +1245,7 @@ function renderTable(telescope, targets) {
         // auto exposure: its S/N and plan, or why tonight's plan could not be made
         if (t.auto_exposure && t.telescope !== 'LOT') {
             const ar = t.auto_result || {};
-            const planName = (ar.selected || []).map(f => f.replace(/p$/, '')).join(' ');
+            const planName = (ar.selected || []).join(' ');
             const warn = ar.error || (ar.too_long ? planName + ' over ' + Math.round((ar.max_total_s || 1800) / 60) + ' min' : '');
             filterExpHTML += '<div class="pa-auto-badge' + (warn ? ' is-warn' : '') + '" title="' + escapeHtml(ar.error || ('CASTOR plan for ' + (ar.night || 'tonight'))) + '">AUTO · S/N ' +
                 escapeHtml(t.auto_snr || 20) + (planName ? ' · ' + escapeHtml(planName) : '') + (warn ? ' · ' + escapeHtml(ar.error ? 'no plan' : warn) : '') + '</div>';

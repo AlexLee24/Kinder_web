@@ -1245,6 +1245,7 @@ body::before {
 .pa-auto-tbl { width: 100%; border-collapse: collapse; }
 .pa-auto-tbl th, .pa-auto-tbl td { padding: 3px 10px 3px 0; text-align: left; font-weight: 400; white-space: nowrap; }
 .pa-auto-tbl thead th { font-size: 0.72rem; color: var(--kw-text-muted, #888); }
+.pa-auto-tbl tbody th, .pa-auto-opt { text-transform: none; font-family: var(--kw-font-mono, monospace); }
 .pa-auto-tbl td.is-num { font-family: var(--kw-font-mono, monospace); }
 .pa-auto-tbl .is-off td { opacity: 0.45; }
 .pa-auto-from { color: var(--kw-text-muted, #888); white-space: normal; }
