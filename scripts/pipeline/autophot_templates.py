@@ -534,3 +534,38 @@ def purge_stale_gaia(wdir, column='SdssStd_mag_u'):
     if gone:
         log(f'Gaia catalogue cache without XP synthetic photometry removed ({len(gone)}): queried again')
     return gone
+
+
+GAIA_TAP = 'https://gea.esac.esa.int/tap-server/tap/sync'
+
+
+def gaia_cached(wdir, target):
+    """A Gaia catalogue with XP synthetic photometry is already cached for this target (AutoPhOT then does not ask
+    the archive): <wdir>/catalog_queries/gaia/<target>/*.csv with the SDSS-u column."""
+    root = Path(wdir) / 'catalog_queries' / 'gaia' / str(target or '').lower()
+    for f in root.glob('*.csv') if root.is_dir() else []:
+        try:
+            with open(f, encoding='utf-8', errors='replace') as fh:
+                if 'SdssStd_mag_u' in fh.readline().strip().split(','):
+                    return True
+        except OSError:
+            pass
+    return False
+
+
+def gaia_reachable(timeout=20):
+    """(ok, why): does the Gaia archive answer a one-row ADQL query? It was down for the DR4 release
+    (2026-11-25 → 12-02) and answered with an HTML page, which AutoPhOT read as an ADQL syntax error and stopped the
+    whole run on."""
+    import urllib.parse
+    import urllib.request
+    q = urllib.parse.urlencode({'REQUEST': 'doQuery', 'LANG': 'ADQL', 'FORMAT': 'csv',
+                                'QUERY': 'SELECT TOP 1 source_id FROM gaiadr3.gaia_source'})
+    try:
+        with urllib.request.urlopen(f'{GAIA_TAP}?{q}', timeout=timeout) as r:
+            body = r.read(400).decode('utf-8', 'replace')
+    except Exception as e:
+        return False, f'{type(e).__name__}: {e}'[:160]
+    if body.lstrip().lower().startswith('source_id'):
+        return True, ''
+    return False, 'it answers with a web page, not data (maintenance?)'

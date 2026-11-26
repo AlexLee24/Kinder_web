@@ -259,3 +259,34 @@ def test_a_stale_whole_document_does_not_drop_entries(kt, tmp_path):
     assert doc['North Zeiss-600'] == {'x': 1}
     assert doc['SLT']['INSTRUME']['a'] == {'r': 'r', 'pixel_scale': 0.76, 'up': 'u'}
     assert oct(p.stat().st_mode & 0o777) == oct(0o644)
+
+
+def test_gaia_cache_with_xp_counts(tmp_path, kt):
+    d = tmp_path / 'catalog_queries' / 'gaia' / 'at2026afqt'
+    d.mkdir(parents=True)
+    (d / 'a.csv').write_text('RA,DEC,phot_g_mean_mag\n1,2,3\n')
+    assert not kt.gaia_cached(tmp_path, 'AT2026afqt')
+    (d / 'b.csv').write_text('RA,DEC,SdssStd_mag_u\n1,2,3\n')
+    assert kt.gaia_cached(tmp_path, 'AT2026afqt') and not kt.gaia_cached(tmp_path, 'SN2026x')
+
+
+def test_gaia_down_is_detected(monkeypatch, kt):
+    import io
+    import urllib.request
+
+    class R(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+    monkeypatch.setattr(urllib.request, 'urlopen', lambda url, timeout=0: R(b'<!doctype html><title>Gaia Archive</title>'))
+    ok, why = kt.gaia_reachable()
+    assert not ok and 'web page' in why
+    monkeypatch.setattr(urllib.request, 'urlopen', lambda url, timeout=0: R(b'source_id\n4295806720\n'))
+    assert kt.gaia_reachable() == (True, '')
+
+    def boom(url, timeout=0):
+        raise OSError('timed out')
+    monkeypatch.setattr(urllib.request, 'urlopen', boom)
+    assert kt.gaia_reachable()[0] is False
