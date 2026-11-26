@@ -108,10 +108,10 @@ def test_target_form_without_magnitude_cannot_use_auto(monkeypatch):
     auto, snr, choice, res, err, cam = targets._auto_exposure(
         {'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00', 'mag': '', 'auto_exposure': True, 'auto_snr': 15,
          'auto_plan': 'rp,gp'}, 'SLT')
-    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'enter its magnitude' in err and cam is None
+    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'MAG column' in err and cam is None
     assert targets._auto_exposure({'auto_exposure': True, 'auto_snr': 1}, 'SLT')[4].startswith('Target S/N')
     lot = targets._auto_exposure({'auto_exposure': True, 'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00'}, 'LOT')
-    assert lot[0] is True and lot[5] is None and 'enter its magnitude' in lot[4]          # LOT auto now too
+    assert lot[0] is True and lot[5] is None and 'MAG column' in lot[4]          # LOT auto now too
     assert targets._auto_exposure({'auto_exposure': False, 'auto_camera': 'SLT_DZ936'}, 'SLT')[5] == 'SLT_DZ936'
 
 

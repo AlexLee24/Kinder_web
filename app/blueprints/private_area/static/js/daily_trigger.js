@@ -601,7 +601,6 @@ async function applyAutoExposure() {
         name: document.getElementById('obs-name').value.trim(),
         ra: document.getElementById('obs-ra').value.trim(),
         dec: document.getElementById('obs-dec').value.trim(),
-        mag: document.getElementById('obs-mag').value.trim(),
         auto_snr: _autoSnr(),
         auto_plan: autoSel.join(','),
         auto_camera: autoCamera,
@@ -619,7 +618,7 @@ async function applyAutoExposure() {
         if (!data.success) {
             autoPanelOpen = false; _renderAutoPlan();
             say(data.error || 'Auto exposure failed', true);
-            if (/magnitude/i.test(data.error || '')) document.getElementById('obs-mag').focus();
+
             return;
         }
         autoResult = data.result;

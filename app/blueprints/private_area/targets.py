@@ -57,7 +57,7 @@ def _auto_exposure(data, telescope):
         return False, snr, choice, None, None, camera
     try:
         res = ae.compute(data.get('name'), _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec')),
-                         data.get('mag'), snr, choice, telescope=telescope, camera=camera, mags_set=mags_set)
+                         None, snr, choice, telescope=telescope, camera=camera, mags_set=mags_set)   # typed: MAG column only
     except ae.NoMagnitude as e:
         return auto, snr, choice, None, str(e), camera
     except Exception:

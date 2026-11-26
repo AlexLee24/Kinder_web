@@ -831,15 +831,15 @@
 
             <form id="add-target-form" onsubmit="addObservationTarget(event)">
                 <!-- Row 1: Target Name / Magnitude -->
-                <div class="pa-form-row two-col" style="grid-template-columns: 3fr 1fr;">
+                <div class="pa-form-row">
                     <div style="position: relative;">
                         <input type="text" id="obs-name" required placeholder="Target Name" autocomplete="off" oninput="searchTarget(this.value); checkTargetNameHint(this.value)" class="pa-input">
                         <div id="search-results-dropdown" class="pa-search-dropdown"></div>
                         <div id="obs-name-hint" class="pa-name-hint"></div>
                     </div>
-                    <div>
-                        <input type="text" id="obs-mag" oninput="checkAutoConstraints()" placeholder="Newest Mag" class="pa-input">
-                    </div>
+                    <!-- the target's magnitude is kept (search pick, edit, daily update) but not typed here: Auto Exposure's
+                         MAG column takes magnitudes per filter -->
+                    <input type="hidden" id="obs-mag">
                 </div>
                 <div class="pa-name-reminder">
                     Use <strong>TNS / IAU name</strong> (AT&nbsp;/&nbsp;SN prefix) or <strong>EP/EPt name</strong> — Database search only works with <strong>SN/AT</strong> prefix, or <strong>LSST-&lt;oid&gt;</strong> for an LSST object on DETECT › LSST that is not in TNS yet. For other names, enter manually and provide coordinates. Avoid survey IDs like ZTF, ATLAS, PS, etc.
@@ -899,7 +899,7 @@
                         </label>
                         <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
                     </div>
-                    <p class="pa-auto-exp-help">CASTOR plans each filter for this S/N (blank: S/N 10 when the target's brightest magnitude is 19 or brighter, else 20) at the target's highest tonight, from its Kinder photometry: that filter's latest detection in the last 3 days, else the brightest of those 3 days in any filter; only with nothing in 3 days, older points up to 30 days (else the magnitude typed). Updated every day after last night's photometry.</p>
+                    <p class="pa-auto-exp-help">CASTOR plans each filter for this S/N (blank: S/N 10 when the target's brightest magnitude is 19 or brighter, else 20) at the target's highest tonight, from its Kinder photometry: that filter's latest detection in the last 3 days, else the brightest of those 3 days in any filter; only with nothing in 3 days, older points up to 30 days (else the magnitudes typed in the MAG column). Updated every day after last night's photometry.</p>
                     <div id="auto-exp-plan" class="pa-auto-plan" hidden></div>
                 </div>
 
