@@ -43,7 +43,7 @@ def test_no_photometry_needs_a_typed_magnitude():
 
 def _fake(monkeypatch, per_filter):
     monkeypatch.setattr(ae, 'best_time', lambda ra, dec, day=None: (datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc), 64.6))
-    monkeypatch.setattr(ae, 'plan_filter', lambda cf, ra, dec, mag, snr, when: per_filter[cf])
+    monkeypatch.setattr(ae, 'plan_filter', lambda cf, ra, dec, mag, snr, when, **kw: per_filter[cf])
 
 
 def _p(elapsed, exp=300, count=1):
@@ -134,7 +134,7 @@ def test_the_newest_detection_becomes_the_newest_mag(monkeypatch):
 def test_without_its_own_snr_a_target_gets_10_when_19_mag_or_brighter_else_20(monkeypatch):
     seen = []
     monkeypatch.setattr(ae, 'best_time', lambda ra, dec, day=None: (datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc), 64.6))
-    monkeypatch.setattr(ae, 'plan_filter', lambda cf, ra, dec, mag, snr, when: seen.append(snr) or _p(65))
+    monkeypatch.setattr(ae, 'plan_filter', lambda cf, ra, dec, mag, snr, when, **kw: seen.append(snr) or _p(65))
     res = ae.compute('AT2026afqt', 47.9, -2.0, detections=DET, now_mjd=NOW)          # brightest 16.73
     assert res['snr'] == 10 and res['snr_auto'] and res['brightest'] == 16.73 and set(seen) == {10}
     faint = [{**d, 'mag': d['mag'] + 3} for d in DET]                                   # brightest 19.73
@@ -152,3 +152,14 @@ def test_target_form_snr_blank_is_automatic(monkeypatch):
     for blank in ('', None, 'auto'):
         assert targets._auto_exposure({'auto_exposure': False, 'auto_snr': blank}, 'SLT')[1] is None
     assert targets._auto_exposure({'auto_exposure': False, 'auto_snr': '15'}, 'SLT')[1] == 15
+
+
+@pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
+def test_the_lot_plan_is_much_shorter_for_a_faint_target():
+    det = [{'mag': 20.37, 'mjd': 61360.0, 'filter': 'r', 'source': 'SLT(AUTO)'}]
+    kw = dict(detections=det, now_mjd=NOW, day=date(2026, 11, 26))
+    slt = ae.compute('AT2026ajog', 41.0, 20.0, **kw)
+    lot = ae.compute('AT2026ajog', 41.0, 20.0, telescope='LOT', **kw)
+    assert lot['telescope'] == 'LOT' and slt['telescope'] == 'SLT'
+    assert lot['options']['all']['total_s'] * 4 < slt['options']['all']['total_s']
+    assert ae.selection('gri') == ['gp', 'rp', 'ip'] and lot['options']['gri']['filters'] == ['gp', 'rp', 'ip']

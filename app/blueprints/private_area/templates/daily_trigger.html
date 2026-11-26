@@ -825,8 +825,9 @@
     
     <!-- New Target Modal -->
     <div id="targetModal" class="pa-modal-overlay">
-        <div class="pa-modal-box">
+        <div class="pa-modal-box pa-target-box">
             <h3 id="target-modal-title">New Target</h3>
+            <div class="pa-target-grid">
 
             <form id="add-target-form" onsubmit="addObservationTarget(event)">
                 <!-- Row 1: Target Name / Magnitude -->
@@ -888,7 +889,7 @@
                     <div class="pa-auto-exp-row">
                         <button type="button" id="btn-auto-exp" onclick="applyAutoExposure()" class="pa-btn-auto-exp">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                            Auto Exposure
+                            <span id="btn-auto-exp-label">Auto Exposure</span>
                         </button>
                         <label class="pa-auto-snr" for="obs-auto-snr">Target S/N
                             <input type="number" id="obs-auto-snr" value="" min="3" max="500" step="1" placeholder="Auto" onchange="onAutoSnrChange()">
@@ -940,6 +941,9 @@
                     </button>
                 </div>
             </form>
+            <!-- the target tonight: visibility, light curve, survey image (dt_auto.js previewTarget) -->
+            <aside id="targetPreview" class="pa-target-preview" aria-label="The target tonight"></aside>
+            </div>
         </div>
     </div>
 

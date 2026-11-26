@@ -426,6 +426,7 @@
         const t = (tgts()).find(x => x.id === id);
         const dlg = $('dtTargetDlg');
         if (!t || !dlg) return;
+        clearPreview();                  // the light curve's element ids are shared with the target window's preview
         selected = id;
         renderDetail(t);
         navState();
@@ -613,6 +614,90 @@
         try { lcDraw(box, d.plot, fig => lcAddPhaseAxis(fig, lcPhaseRefDefault, 'Phase (days since discovery)'), 420); }
         catch (e) { console.error('dt_auto: light curve', e); say('Could not draw the light curve'); }
     }
+
+    // ── New / edit target window: the target tonight beside the form (visibility, light curve, survey image) ──
+    let pvTimer = null, pvKey = null;
+    const LEGEND_STYLE = 'display:none; flex-wrap:wrap; gap:4px 6px; padding:8px 0 6px; max-height:108px; overflow-y:auto; border-top:1px solid rgba(255,255,255,0.06); margin-top:8px;';
+    function clearPreview() { const b = $('targetPreview'); if (b) b.replaceChildren(); pvKey = null; }
+    function schedulePreview(ms) { clearTimeout(pvTimer); pvTimer = setTimeout(previewTarget, ms == null ? 700 : ms); }
+    function previewTarget() {
+        const box = $('targetPreview');
+        if (!box || !box.closest('.pa-modal-overlay') || box.closest('.pa-modal-overlay').style.display === 'none') return;
+        const v = id => (($(id) || {}).value || '').trim();
+        const name = v('obs-name'), ra = v('obs-ra'), dec = v('obs-dec');
+        const key = `${name}|${ra}|${dec}`;
+        if (key === pvKey) return;
+        pvKey = key;
+        if (!name && !(ra && dec)) {
+            box.replaceChildren(el('p', { class: 'pa-tp-empty', text: 'Enter a target to see it tonight from Lulin, its light curve and a survey image.' }));
+            return;
+        }
+        const t = { id: 'preview', name, ra, dec };
+        renderDetail(null);                     // the target popout's light curve ids would clash
+        selected = null;
+        box.replaceChildren(
+            el('section', { class: 'pa-tp-sec', 'aria-label': 'Tonight from Lulin' }, el('h4', { text: 'Tonight from Lulin' }),
+                el('div', { class: 'pa-tp-astro', id: 'tpAstro' }),
+                el('div', { class: 'pa-tp-vis', id: 'tpVis' }, el('p', { class: 'pa-tp-empty', text: ra && dec ? 'Computing…' : 'Enter RA and Dec' }))),
+            el('section', { class: 'pa-tp-sec', 'aria-label': 'Light curve' },
+                el('h4', {}, 'Light curve', name ? [' · ', el('a', { href: objUrl(name), target: '_blank', rel: 'noopener', text: 'Transient page' })] : null),
+                el('div', { class: 'pa-tp-lc' },
+                    el('div', { id: 'telescopeToggles', style: 'display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;' }),
+                    el('div', { id: 'tpLcPlot' }, el('p', { class: 'pa-tp-empty', text: name ? 'Loading the light curve…' : '—' })),
+                    el('div', { id: 'photLegend', style: LEGEND_STYLE }))),
+            el('section', { class: 'pa-tp-sec', 'aria-label': 'Survey image' }, el('h4', { text: 'Survey, 60″ around the target' }),
+                el('div', { class: 'pa-tp-sky' }, (ra && dec && skyFig(t)) || el('p', { class: 'pa-tp-empty', text: '—' }))));
+        if (ra && dec) previewVis(t, key);
+        if (name) previewLc(t, key);
+    }
+    async function previewVis(t, key) {
+        const say = text => { const b = $('tpVis'); if (b && pvKey === key) b.replaceChildren(el('p', { class: 'pa-tp-empty', text })); };
+        const now = new Date();
+        if (now.getHours() < 12) now.setDate(now.getDate() - 1);
+        const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        try {
+            const res = await fetch('/api/visibility_data', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: day, location: '120:52:21 23:28:10 2862', timezone: '8', telescope: 'ALL',
+                                       targets: [{ name: t.name || 'target', ra: t.ra, dec: t.dec }], n_steps: 80 }) });
+            const d = await res.json();
+            if (pvKey !== key) return;
+            const td = d.success && d.targets && d.targets[0];
+            if (!td || !td.altitudes || !td.altitudes.length) { say('Could not compute the visibility (check RA and Dec)'); return; }
+            const peak = Math.round(Math.max(...td.altitudes));
+            $('tpAstro').replaceChildren(
+                el('span', {}, 'Peak ', el('b', { text: peak + '°', style: `color:${peak >= 30 ? '#7fe0a0' : '#ff9b8f'}` })),
+                el('span', {}, 'Transit ', el('b', { text: td.transit_time_local ? td.transit_time_local.slice(11, 16) : '—' })),
+                el('span', {}, 'Moon ', el('b', { text: td.moon_separation != null ? td.moon_separation + '°' : '—' })));
+            $('tpVis').innerHTML = typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(td.altitudes, d.times_local) : '';
+        } catch (e) { say('Could not compute the visibility'); }
+    }
+    async function previewLc(t, key) {
+        const say = text => { const b = $('tpLcPlot'); if (b && pvKey === key) b.replaceChildren(el('p', { class: 'pa-tp-empty', text })); };
+        let d;
+        try { d = await lcData(t); } catch (e) { say('Could not load the light curve'); return; }
+        if (pvKey !== key) return;
+        if (!d.object) { say('Not a Kinder object: no light curve'); return; }
+        if (!d.plot || !d.plot.success || !d.plot.plot_json) { say((d.plot && (d.plot.message || d.plot.error)) || 'No photometry on the Transient page yet'); return; }
+        try { await whenPlotly(); } catch (e) { say('Could not load the plotting library'); return; }
+        const box = $('tpLcPlot');
+        if (!box || pvKey !== key) return;
+        const disc = _mjdFromDateString(d.disc);
+        lcPhaseRefDefault = disc != null ? { mjd: disc, custom: false } : null;
+        try { lcDraw(box, d.plot, fig => lcAddPhaseAxis(fig, lcPhaseRefDefault, 'Phase (days since discovery)'), 340); }
+        catch (e) { console.error('dt_auto: preview light curve', e); say('Could not draw the light curve'); }
+    }
+    ['obs-name', 'obs-ra', 'obs-dec'].forEach(id => $(id)?.addEventListener('input', () => schedulePreview()));
+    // the form is filled by these (a new target, an edited one, a database search pick): show that target
+    ['openTargetModal', 'editTarget', 'selectSearchResult'].forEach(fn => {
+        const orig = window[fn];
+        if (typeof orig !== 'function') return;
+        window[fn] = function () {
+            const out = orig.apply(this, arguments);
+            pvKey = null;
+            Promise.resolve(out).finally(() => schedulePreview(fn === 'selectSearchResult' ? 300 : 50));
+            return out;
+        };
+    });
 
     function focusTarget(name, tel) {
         const t = (tgts()).find(x => x.name === name && x.telescope === tel) || (tgts()).find(x => x.name === name);

@@ -317,6 +317,20 @@ def api_auto_exposure():
     _err = _coord_error(data)
     if _err:
         return jsonify({'error': _err}), 400
+    if (data.get('telescope') or '').strip().upper() == 'LOT':      # "Switch to LOT": a plan for the filter rows
+        from app.services.planning import auto_exposure as ae
+        _, snr, choice, _, err = _auto_exposure({**data, 'auto_exposure': False}, 'LOT')
+        if err:
+            return jsonify({'error': err}), 400
+        try:
+            res = ae.compute(data.get('name'), _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec')),
+                             data.get('mag'), snr, choice, telescope='LOT')
+        except ae.NoMagnitude as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception:
+            logger.exception('LOT plan for %s', data.get('name'))
+            return jsonify({'error': 'Could not compute the LOT plan (CASTOR).'}), 400
+        return jsonify({'success': True, 'result': res})
     _, _, _, res, err = _auto_exposure({**data, 'auto_exposure': True}, 'SLT')
     if err:
         return jsonify({'error': err}), 400

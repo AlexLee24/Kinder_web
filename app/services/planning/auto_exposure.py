@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # (script filter, band, CASTOR filter)
 BANDS = (('up', 'u', 'Sloan_u'), ('gp', 'g', 'Sloan_g'), ('rp', 'r', 'Sloan_r'), ('ip', 'i', 'Sloan_i'), ('zp', 'z', 'Sloan_z'))
 ALL = tuple(sf for sf, _, _ in BANDS)
-PLANS = {'all': ALL, 'gr': ('gp', 'rp'), 'r': ('rp',)}       # the shorter plans offered when the pick runs long
+PLANS = {'all': ALL, 'gri': ('gp', 'rp', 'ip'), 'gr': ('gp', 'rp'), 'r': ('rp',)}     # the shorter plans offered when the pick runs long
 DEFAULT_SNR = 20.0
 # S/N when the target sets none (the user's rule, 2026-11-26): from its brightest magnitude in the plan
 AUTO_SNR_SPLIT_MAG = 19.0
@@ -47,6 +47,10 @@ MAX_EXP_S = 300               # longest single frame: a fainter target gets more
 FRAME_STEPS = (150,)          # frame lengths besides CASTOR's own (150 s: what SLT has been taking)
 SAT_MARGIN = 0.7              # a frame at most 70% of CASTOR's saturation time for the target
 SITE, TELESCOPE, CAMERA = 'lulin', 'SLT', 'SLT_DZ936'      # the SLT camera since 2026-11-03
+# LOT (1 m, Sophia) for the form's "Switch to LOT": a plan to fill the filters with (LOT has no auto exposure); its
+# frames reach SLT's depth ~10x sooner, so 60 s is its shortest frame in every filter
+CAMERAS = {'SLT': CAMERA, 'LOT': 'Sophia'}
+MIN_EXP_LOT_S = 60
 LULIN = ('120:52:21.5', '23:28:10.0', 2800)
 TZ8 = timezone(timedelta(hours=8))
 MIN_ALT_DEG = 20
@@ -211,13 +215,13 @@ def _fwhm(cat):
         return 1.4
 
 
-def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None):
-    """CASTOR's plan for one filter, frames at least min_exp s (default: MIN_EXP_S of that filter):
-    {'status', 'exp', 'count', 'elapsed', 'snr', 'sat_s'} (exp None when no frame works)."""
+def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None, telescope=TELESCOPE):
+    """CASTOR's plan for one filter on SLT (or LOT), frames at least min_exp s (default: MIN_EXP_S of that filter on
+    SLT, MIN_EXP_LOT_S on LOT): {'status', 'exp', 'count', 'elapsed', 'snr', 'sat_s'} (exp None when no frame works)."""
     if min_exp is None:
-        min_exp = next((MIN_EXP_S[sf] for sf, _, cf in BANDS if cf == castor_filter), 60)
+        min_exp = MIN_EXP_LOT_S if telescope == 'LOT' else next((MIN_EXP_S[sf] for sf, _, cf in BANDS if cf == castor_filter), 60)
     plan, cat = _castor()
-    kw = dict(site=SITE, telescope=TELESCOPE, camera=CAMERA, optic_filter=castor_filter, ra=float(ra), dec=float(dec),
+    kw = dict(site=SITE, telescope=telescope, camera=CAMERAS[telescope], optic_filter=castor_filter, ra=float(ra), dec=float(dec),
               mag=float(mag), observing_time_utc=when.isoformat().replace('+00:00', 'Z'), fwhm=_fwhm(cat))
     r = plan.compute_plan(cat, **kw, target_snr=float(snr))
     rec, status = r.get('recommended'), r.get('status')
@@ -250,7 +254,8 @@ WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot 
        'below_horizon': 'not above the horizon tonight'}
 
 
-def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None):
+def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None,
+            telescope=TELESCOPE):
     """The target's plan for tonight for the filters picked (choice), at its own S/N or (snr None) auto_snr's.
     Raises NoMagnitude when there is nothing to compute it from."""
     picked = selection(choice)
@@ -260,7 +265,7 @@ def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, dete
     when, alt = best_time(ra, dec, day)
     filters, notes = {}, []
     for sf, b, cf in BANDS:
-        p = plan_filter(cf, ra, dec, mags[sf]['mag'], snr, when)
+        p = plan_filter(cf, ra, dec, mags[sf]['mag'], snr, when, telescope=telescope)
         filters[sf] = {**p, **mags[sf]}
         if p['exp'] is None:
             notes.append(f'{b}: {WHY.get(p["status"], p["status"])}')
@@ -274,7 +279,7 @@ def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, dete
     if alt < MIN_ALT_DEG:
         notes.append(f'highest tonight only {alt:.0f}°')
     return {'computed_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'night': (day or datetime.now(TZ8).date()).isoformat(),
-            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'snr_auto': snr_auto, 'brightest': round(brightest, 2), 'selected': picked, 'total_s': total,
+            'when': when.isoformat(), 'alt': round(alt, 1), 'telescope': telescope, 'snr': snr, 'snr_auto': snr_auto, 'brightest': round(brightest, 2), 'selected': picked, 'total_s': total,
             'filters': filters, 'options': options, 'plan': plan, 'too_long': total > MAX_TOTAL_S,
             'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes, 'latest': _latest(mags)}
 
