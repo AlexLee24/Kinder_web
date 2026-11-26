@@ -558,7 +558,7 @@ function _moonLine(res) {
 function _renderAutoPlan() {
     const box = document.getElementById('auto-exp-plan');
     if (!box) return;
-    if (!autoPanelOpen && !autoResult) { box.hidden = true; box.innerHTML = ''; return; }
+    if (!autoPanelOpen && !autoResult) { box.hidden = true; box.innerHTML = ''; document.getElementById('auto-exp-choose')?.replaceChildren(); return; }
     const res = autoResult && autoResult.filters ? autoResult : null;
     const band = sf => sf;           // the script's filter names, as in the filter rows below: up gp rp ip zp
     const allOn = autoSel.length === AUTO_ALL.length;
@@ -614,6 +614,9 @@ function _renderAutoPlan() {
         if ((res.notes || []).length) html += '<p class="pa-auto-warn">' + escapeHtml(res.notes.join(' ')) + '</p>';
     }
     box.innerHTML = html;
+    // the plan pick sits under the exposures it fills (the target window keeps a place for it there)
+    const slot = document.getElementById('auto-exp-choose');
+    if (slot) { slot.replaceChildren(); const pick = box.querySelector('.pa-auto-choose'); if (pick) slot.appendChild(pick); }
     box.hidden = false;
 }
 
@@ -2744,12 +2747,15 @@ function closeVisibilityPlot() {
     Plotly.purge('vp-plot-area'); // Clear Plotly internal state completely to ensure re-render works next time
 }
 
+let vpRequest = 0;          // the latest Visibility window opening: an older answer is dropped
 async function openVisibilityPlot(forcedTelescope) {
+    const myRequest = ++vpRequest;
     const activeTelescope = forcedTelescope || (document.getElementById('tab-SLT').classList.contains('active') ? 'SLT' : 'LOT');
     document.getElementById('vp-tab-name').textContent = activeTelescope;
     document.getElementById('visibilityPlotModal').style.display = 'flex';
     
     // Clear previous plot but keep loading text
+    try { Plotly.purge('vp-plot-area'); } catch (e) { /* not drawn yet */ }
     document.getElementById('vp-plot-area').innerHTML = '';
     document.getElementById('vp-target-list').innerHTML = '';
     const loadingEl = document.getElementById('vp-loading');
@@ -2803,6 +2809,7 @@ async function openVisibilityPlot(forcedTelescope) {
             })
         });
         const data = await resp.json();
+        if (myRequest !== vpRequest || document.getElementById('visibilityPlotModal').style.display === 'none') return;
         if (data.success) {
             vpCurrentData = data;
             renderVisibilityPlot();
@@ -2978,12 +2985,13 @@ function renderVisibilityPlot() {
     const offsetMs = data.timezone_offset * 3600000;
     const topTickVals  = [];
     const topTickTexts = [];
+    const tickStep = (document.getElementById('vp-plot-area')?.clientWidth || 800) < 560 ? 3 : 1;   // hours between ticks (a phone: 3)
     let tickMs = (Math.floor(firstMs / 3600000) + 1) * 3600000;
     while (tickMs <= lastMs) {
         topTickVals.push(new Date(tickMs).toISOString().slice(0, 19));
         const lt = new Date(tickMs + offsetMs);
         topTickTexts.push(lt.getUTCHours().toString().padStart(2, '0') + ':' + lt.getUTCMinutes().toString().padStart(2, '0'));
-        tickMs += 3600000;
+        tickMs += 3600000 * tickStep;
     }
 
     const layout = {
@@ -2997,7 +3005,7 @@ function renderVisibilityPlot() {
             tickfont: { size: 10 },
             showgrid: true,
             tickformat: '%H:%M',
-            dtick: 3600000
+            dtick: 3600000 * tickStep
         },
         xaxis2: {
             overlaying: 'x', side: 'top', matches: 'x',

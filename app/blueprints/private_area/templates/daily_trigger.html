@@ -23,22 +23,22 @@
         .dt-page tr.pa-row-off .pa-td-name a, .dt-page tr.pa-row-off .pa-td-name span:not(.pa-off-chip) { color: var(--kw-text-secondary); }
         .dt-page .pa-off-chip {
             display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border-radius: 999px;
-            font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+            font-size: 0.6875rem; font-weight: 600; letter-spacing: normal; text-transform: none;
             color: var(--kw-text-muted); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.10);
         }
-        .dt-page tr.pa-row-off .pa-td-coord { font-size: 0.7rem; line-height: 1.35; }
+        .dt-page tr.pa-row-off .pa-td-coord { font-size: 0.6875rem; line-height: 1.35; }
         .dt-page tr.pa-row-off .pa-td-priority { color: var(--kw-text-muted) !important; }
         .dt-page tr.pa-row-off .pa-td-filter-exp { opacity: 0.6; }
-        .dt-page .pa-filter-more { display: none; font-size: 0.72rem; color: var(--kw-text-muted); }
+        .dt-page .pa-filter-more { display: none; font-size: 0.75rem; color: var(--kw-text-muted); }
         /* off rows: the filters compressed to one row of chips (exposure × count in each chip's title) */
         .dt-page tr.pa-row-off .pa-filter-stack { flex-direction: row !important; flex-wrap: wrap; gap: 3px !important; }
         .dt-page tr.pa-row-off .pa-filter-stack > div > span:first-child { width: auto !important; }
-        .dt-page tr.pa-row-off .pa-filter-stack > div > span:first-child > span { padding: 1px 3px !important; min-width: 0 !important; font-size: 0.66rem !important; }
+        .dt-page tr.pa-row-off .pa-filter-stack > div > span:first-child > span { padding: 1px 3px !important; min-width: 0 !important; font-size: 0.6875rem !important; }
         .dt-page tr.pa-row-off .pa-filter-stack > div > span:nth-child(2) { display: none; }
         .dt-page tr.pa-row-off .pa-filter-more { display: none; }
         /* off rows: notes wrap to two lines instead of one clipped line; a click opens the whole note */
         .dt-page tr.pa-row-off .pa-td-note { min-width: 140px; cursor: pointer; }
-        .dt-page tr.pa-row-off .pa-note-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 0.8rem; line-height: 1.35; }
+        .dt-page tr.pa-row-off .pa-note-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 0.8125rem; line-height: 1.35; }
         .dt-page tr.pa-row-off .pa-note-open .pa-note-text { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; }
         .dt-page .pa-sel-box { width: 15px; height: 15px; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--kw-accent); cursor: pointer; }
         .dt-page .pa-sel-all { display: inline-flex; }
@@ -58,29 +58,29 @@
         /* Note: for Lulin over for Lab, each with a small label */
         .dt-page .pa-td-note { overflow-wrap: anywhere; white-space: pre-line; }
         .dt-page .pa-note-item + .pa-note-item { margin-top: 10px; }
-        .dt-page .pa-note-lab { display: block; margin-bottom: 2px; font-size: 0.7rem; line-height: 1.3; color: var(--kw-text-muted); white-space: nowrap; }
+        .dt-page .pa-note-lab { display: block; margin-bottom: 2px; font-size: 0.6875rem; line-height: 1.3; color: var(--kw-text-muted); white-space: nowrap; }
         .dt-page tr.pa-row-off .pa-note-item + .pa-note-item { margin-top: 6px; }
         .dt-page .pa-sort { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; border: 0; background: none;
-                            font: inherit; font-size: 0.68rem; color: var(--kw-text-muted); cursor: pointer; letter-spacing: inherit; text-transform: inherit; }
+                            font: inherit; font-size: 0.6875rem; color: var(--kw-text-muted); cursor: pointer; letter-spacing: inherit; text-transform: inherit; }
         .dt-page .pa-sorts { display: flex; flex-wrap: wrap; gap: 0 12px; }
         .dt-page .pa-sort:hover, .dt-page .pa-sort[aria-pressed="true"] { color: var(--kw-text-secondary); }
         .dt-page .pa-sort:focus-visible { outline: 2px solid var(--kw-accent); outline-offset: 2px; border-radius: 4px; }
         .dt-page .pa-name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
         .dt-page .pa-td-name-content { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-        .dt-page .pa-td-name .pa-td-priority { font-weight: 600; font-size: 0.95rem; }
+        .dt-page .pa-td-name .pa-td-priority { font-weight: 600; font-size: 0.9375rem; }
         .dt-page .pa-td-pos > * + * { margin-top: 6px; }
-        .dt-page .pa-td-sky .pa-td-coord { cursor: pointer; font-family: var(--kw-font-mono, monospace); color: #aaa; line-height: 1.35; font-size: 0.7rem; margin-bottom: 8px; }
+        .dt-page .pa-td-sky .pa-td-coord { cursor: pointer; font-family: var(--kw-font-mono, monospace); color: #aaa; line-height: 1.35; font-size: 0.6875rem; margin-bottom: 8px; }
         .dt-page .pa-td-sky .pa-td-coord span { white-space: nowrap; }
         .dt-page .pa-td-name .pa-td-last-obs { margin-top: 2px; }
         /* Off rows: short. Name · priority · when it goes, coordinates on one line with a small tonight plot and the
            last observation, the notes one line each; no exposure, no cutout. Keep switch beside On / Off. */
         .dt-page .pa-target-table tr.pa-row-off td { padding-top: 8px; padding-bottom: 8px; vertical-align: middle; }
-        .dt-page tr.pa-row-off .pa-td-exp .pa-td-total-exp { font-size: 0.82rem; color: var(--kw-text-secondary); margin-bottom: 4px; }
+        .dt-page tr.pa-row-off .pa-td-exp .pa-td-total-exp { font-size: 0.8125rem; color: var(--kw-text-secondary); margin-bottom: 4px; }
         .dt-page tr.pa-row-off .pa-td-name-content { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
         .dt-page tr.pa-row-off .pa-name-line { width: 100%; gap: 6px; }
         .dt-page tr.pa-row-off .pa-off-chip { padding: 0 5px; }
         .dt-page tr.pa-row-off .pa-name-line .pa-sel-box { margin-right: 2px; }
-        .dt-page tr.pa-row-off .pa-td-name .pa-td-priority { font-size: 0.8rem; font-weight: 500; }
+        .dt-page tr.pa-row-off .pa-td-name .pa-td-priority { font-size: 0.8125rem; font-weight: 500; }
         .dt-page tr.pa-row-off .pa-td-pos { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
         .dt-page tr.pa-row-off .pa-td-pos > * { margin: 0; }
         .dt-page tr.pa-row-off .pa-td-sky .pa-td-coord { margin: 0; }
@@ -94,26 +94,26 @@
         .dt-page tr.pa-row-off .pa-note-text { -webkit-line-clamp: 1; }
         .dt-page tr.pa-row-off .pa-td-note { white-space: normal; }
         .pa-vis-svg.is-small { width: 96px; height: 26px; flex: none; }
-        .dt-page .pa-autodel { font-size: 0.74rem; color: #ffb38a; }
+        .dt-page .pa-autodel { font-size: 0.75rem; color: #ffb38a; }
         .dt-page .pa-autodel.is-kept { color: #8fe3b0; }
-        .dt-page .pa-keep-wrap { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.72rem; color: var(--kw-text-muted); }
+        .dt-page .pa-keep-wrap { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.75rem; color: var(--kw-text-muted); }
         .dt-page .pa-on-wrap { cursor: default; }
         .dt-page tr.pa-row-off .pa-action-cell { flex-direction: column; align-items: flex-start; }
         .dt-page .pa-keep-wrap:has(input:checked) { color: #8fe3b0; }
         .dt-page .pa-keep-switch input:checked + .pa-action-slider { background: rgba(80, 200, 130, 0.85); }
         .dt-page .pa-keep-switch input:focus-visible + .pa-action-slider { outline: 2px solid var(--kw-accent); outline-offset: 2px; }
         .dt-page tr.pa-row-off .pa-action-row-top { gap: 10px; }
-        .dt-page .pa-lo-lab { display: block; font-size: 0.68rem; color: var(--kw-text-muted); margin-bottom: 1px; }
+        .dt-page .pa-lo-lab { display: block; font-size: 0.6875rem; color: var(--kw-text-muted); margin-bottom: 1px; }
         .dt-page .pa-repeat { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 2px 8px; border-radius: 6px;
-                              font-size: 0.78rem; color: var(--kw-accent, #ffa64d); background: rgba(255, 166, 77, 0.08); border: 1px solid rgba(255, 166, 77, 0.3); }
-        .dt-page tr.pa-row-off .pa-repeat { margin-top: 3px; padding: 0 5px; font-size: 0.66rem; }
+                              font-size: 0.75rem; color: var(--kw-accent, #ffa64d); background: rgba(255, 166, 77, 0.08); border: 1px solid rgba(255, 166, 77, 0.3); }
+        .dt-page tr.pa-row-off .pa-repeat { margin-top: 3px; padding: 0 5px; font-size: 0.6875rem; }
         .dt-page tr.pa-row-off .pa-repeat svg { width: 10px; height: 10px; }
         .dt-page .pa-td-exp .pa-td-total-exp { font-size: 1rem; color: var(--kw-text-primary, #f5f5f7); margin-bottom: 8px; }
         .dt-page .pa-target-table th { vertical-align: bottom; white-space: normal; }
-        .dt-page .pa-td-last-obs { font-size: 0.82rem; color: var(--kw-text-secondary); line-height: 1.35; }
+        .dt-page .pa-td-last-obs { font-size: 0.8125rem; color: var(--kw-text-secondary); line-height: 1.35; }
         .dt-page .pa-last-obs-val { display: inline-block; font-family: var(--kw-font-mono, monospace); }
-        @media (max-width: 768px) { .dt-page .pa-last-obs-val { text-align: right; } }
-        .dt-page .pa-td-last-obs small { display: block; margin-top: 2px; color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); font-size: 0.72rem; }
+        @media (max-width: 768px) { .dt-page .pa-last-obs-val { text-align: left; } }
+        .dt-page .pa-td-last-obs small { display: block; margin-top: 2px; color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); font-size: 0.75rem; }
         .dt-page .pa-td-last-obs .pa-never { color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); }
         .dt-page tr.pa-row-off .pa-action-cell { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 6px; }
         .dt-page tr.pa-row-off .pa-action-row-btns .pa-btn-action { font-size: 0; gap: 0; }   /* icon only; the title says what it does */
@@ -130,7 +130,7 @@
             .dt-page .pa-target-table td:nth-of-type(n+7)::before { content: none; }
             /* phone cards: each part's label above its content (the cells hold several lines now) */
             .dt-page .pa-target-table tbody td:not(.pa-empty-row) { display: block; text-align: left; }
-            .dt-page .pa-target-table tbody td:not(.pa-empty-row)::before { display: block; margin: 0 0 6px; font-size: 0.72rem; }
+            .dt-page .pa-target-table tbody td:not(.pa-empty-row)::before { display: block; margin: 0 0 6px; font-size: 0.75rem; }
             .dt-page .pa-target-table tbody td > * { max-width: none; text-align: left; }
             .dt-page .pa-mini-plot { max-width: 300px; }
         }
@@ -241,7 +241,7 @@
             line-height: 1.4;
         }
         .pa-name-hint {
-            font-size: 0.72rem;
+            font-size: 0.75rem;
             margin-top: 4px;
             min-height: 16px;
             transition: color 0.2s;
@@ -262,7 +262,7 @@
             display: inline-flex;
             align-items: center;
             gap: 2px;
-            font-size: 0.72rem;
+            font-size: 0.75rem;
             color: rgba(255,255,255,0.45);
             white-space: nowrap;
             font-family: monospace;
@@ -270,7 +270,7 @@
         .pa-mini-plot { margin-top: 8px; width: 100%; max-width: 240px; }
         .dt-page tr.pa-row-off .pa-td-name-content > div:first-child { flex-wrap: wrap; row-gap: 4px; }
         .pa-vis-svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--kw-font-mono, monospace); }
-        .pa-vis-cap { display: block; margin-top: 4px; font-size: 0.74rem; line-height: 1.3; color: var(--kw-text-secondary); white-space: nowrap; }
+        .pa-vis-cap { display: block; margin-top: 4px; font-size: 0.75rem; line-height: 1.3; color: var(--kw-text-secondary); white-space: nowrap; }
         .pa-vis-cap b { font-weight: 500; color: #8fd0ff; font-family: var(--kw-font-mono, monospace); }
         .pa-vis-cap.is-no { color: rgba(255, 150, 140, 0.85); }
     
@@ -285,8 +285,8 @@
             .pa-log-controls .pa-btn-log-action { justify-content: center; min-height: 42px; }
             .pa-log-controls #log-target-search, .pa-log-controls #logShowFilterBtn { grid-column: span 2; }
             .pa-target-table tr { margin-bottom: 12px !important; padding: 4px 10px !important; }
-            .pa-target-table td { padding: 7px 2px !important; font-size: 0.86rem !important; }
-            .pa-target-table td::before { font-size: 0.78rem; }
+            .pa-target-table td { padding: 7px 2px !important; font-size: 0.875rem !important; }
+            .pa-target-table td::before { font-size: 0.75rem; }
         }
 
         /* ── One design (2026-10-28): the page sits in the shell as stacked kw-panels; private_area.css (shared with
@@ -303,7 +303,7 @@
         body[data-page="private_area.daily_trigger"] ::selection { background: var(--kw-accent-dim); }
         .dt-page > .kw-panel { width: auto; max-width: none; margin: 0; }
         .dt-page .kw-panel-head h2 { text-align: left; }
-        .dt-credit { margin: 14px 0 0; font-size: 0.74rem; color: var(--kw-text-faint); text-align: center; }
+        .dt-credit { margin: 14px 0 0; font-size: 0.75rem; color: var(--kw-text-faint); text-align: center; }
 
         /* Checklist + script: two kw-inset columns */
         /* The section is only a wrapper; each column is its own full panel (no panel-in-panel). */
@@ -313,7 +313,7 @@
         .dt-page .pa-trigger-script-col.locked::after { border-radius: var(--kw-radius-xl); background: rgba(14, 14, 18, 0.80); }
         .dt-page .pa-trigger-script-col.locked .pa-script-vis-empty { visibility: hidden; }
         .dt-page .pa-trigger-grid:not(.is-complete) .pa-script-body { flex-direction: column; }
-        .dt-page .pa-trigger-col-head { color: var(--kw-text-white); font-size: 0.95rem; font-weight: 700; gap: 10px; flex-wrap: wrap; }
+        .dt-page .pa-trigger-col-head { color: var(--kw-text-white); font-size: 0.9375rem; font-weight: 600; gap: 10px; flex-wrap: wrap; }
         .dt-page .pa-checklist-group-title { color: var(--kw-text-secondary); }
         .dt-page .pa-trigger-progress { background: var(--kw-accent-dim); border-color: var(--kw-accent-border); border-radius: var(--kw-radius-pill); }
         .dt-page .pa-checklist-item label { border-radius: var(--kw-radius-md); }
@@ -340,7 +340,7 @@
         body[data-page="private_area.daily_trigger"] :is(.pa-btn-log-action, .pa-log-controls .pa-btn-log-action, .pa-btn-filter-toggle) {
             min-height: 40px; height: auto; margin: 0; padding: 0 14px; border-radius: var(--kw-radius-md);
             background: var(--kw-surface, rgba(255,255,255,0.06)); border: 1px solid var(--kw-border-med); color: var(--kw-text-primary);
-            font-size: 0.86rem; font-weight: 600;
+            font-size: 0.875rem; font-weight: 600;
         }
         body[data-page="private_area.daily_trigger"] :is(.pa-btn-log-action, .pa-btn-filter-toggle):hover { background: var(--kw-surface-hover); color: var(--kw-text-white); }
         body[data-page="private_area.daily_trigger"] .pa-btn-log-action.active, body[data-page="private_area.daily_trigger"] .pa-btn-filter-toggle.active {
@@ -365,14 +365,14 @@
 
         /* Observation Targets: panel head row (SLT | LOT seg · title · actions) */
         .dt-page .dt-obs-topbar { margin-bottom: 14px; padding-bottom: 0; border-bottom: 0; flex-wrap: wrap; }
-        .dt-page .dt-obs-topbar h2 { order: -1; flex: 1 1 auto; margin: 0; font-size: 1rem; font-weight: 700; color: var(--kw-text-white); }
+        .dt-page .dt-obs-topbar h2 { order: -1; flex: 1 1 auto; margin: 0; font-size: 1rem; font-weight: 600; color: var(--kw-text-white); }
         .dt-page .dt-obs-topbar .pa-tabs-header { margin: 0; gap: 2px; border-bottom: 1px solid var(--kw-border); }
-        .dt-page .dt-obs-topbar .pa-tab-btn { min-height: 34px; padding: 0 13px; border: 0; border-radius: 9px; font-size: 0.84rem; font-weight: 400; color: var(--kw-text-secondary); }
+        .dt-page .dt-obs-topbar .pa-tab-btn { min-height: 34px; padding: 0 13px; border: 0; border-radius: 9px; font-size: 0.8125rem; font-weight: 400; color: var(--kw-text-secondary); }
         .dt-page .dt-obs-topbar .pa-tab-btn:hover { background: rgba(255, 255, 255, 0.07); color: var(--kw-text-white); }
         .dt-page .dt-obs-topbar .pa-tab-btn.active { background: rgba(255, 255, 255, 0.15); color: var(--kw-text-white); font-weight: 600; border: 0; }
         .dt-page .dt-obs-topbar .pa-obs-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
         .dt-page .pa-target-table thead tr { background: transparent; }
-        .dt-page .pa-target-table th { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--kw-text-muted); border-bottom: 1px solid var(--kw-hairline); }
+        .dt-page .pa-target-table th { font-size: 0.75rem; font-weight: 500; letter-spacing: normal; text-transform: none; color: var(--kw-text-muted); border-bottom: 1px solid var(--kw-hairline); }
 
         /* Observation Log */
         .dt-page .pa-log-container { border-radius: var(--kw-radius-lg); border-color: var(--kw-hairline); }
@@ -392,6 +392,20 @@
             .dt-page .dt-obs-topbar .pa-obs-actions :is(#btn-add-slt, #btn-add-lot) { grid-column: 1 / -1; }
             .dt-page .pa-target-table tr { border-color: var(--kw-border); border-radius: var(--kw-radius-lg); }
             .dt-page .pa-target-table td::before { color: var(--kw-text-muted); }
+            /* phone card, compact: Target and Tonight full width; Exposure beside RA / Dec and its image; then Note
+               and the actions in one row */
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) { display: grid !important; grid-template-columns: minmax(0, 1fr) 112px; column-gap: 12px; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td { grid-column: 1 / -1; min-width: 0; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(3) { grid-column: 2; grid-row: 3; overflow-wrap: anywhere; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(4) { grid-column: 1; grid-row: 3; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(1)::before { content: none; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(3) :is(img, .dta-thumb, .pa-sky-thumb) { width: 100%; height: auto; }
+            .dt-page .pa-target-table tr:not(.pa-row-off) .pa-action-row-btns .pa-btn-action { justify-content: center; }
+            /* Observation log controls: year · month, then Today · Refresh · Data in one row, then filter and search */
+            .dt-page .pa-log-controls { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+            .dt-page .pa-log-controls > :is(#log-year, #log-month) { grid-column: span 3; }
+            .dt-page .pa-log-controls > .pa-btn-log-action { grid-column: span 2; }
+            .dt-page .pa-log-controls > :is(#logShowFilterBtn, #log-target-search) { grid-column: 1 / -1; }
         }
     </style>
 {% endblock %}
@@ -795,10 +809,10 @@
 
 {% block after_main %}
     <!-- Calendar Modal: the next two weeks of Lab › Calendar (lab events + the Lulin LOT schedule) -->
-    <div id="calendarModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
+    <dialog id="calendarModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
         <div class="pa-modal-box" style="max-width:560px;width:96vw;">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:12px;">
-                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Next two weeks</h3>
+                <h3 style="margin:0;font-size:1rem;font-weight:500;letter-spacing:normal;text-transform:none;color:var(--kw-text-primary, #f5f5f7);">Next two weeks</h3>
                 <div style="display:flex;gap:8px;">
                     <a href="/lab_calendar" class="kw-btn kw-btn-sm">Open calendar</a>
                     <button type="button" onclick="document.getElementById('calendarModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
@@ -806,30 +820,36 @@
             </div>
             <div id="dtCalendarList" style="max-height:min(640px,70vh);overflow-y:auto;"><p class="kw-empty">Loading…</p></div>
         </div>
-    </div>
+    </dialog>
 
     <!-- Weather Modal -->
-    <div id="weatherModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
+    <dialog id="weatherModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
         <div class="pa-modal-box" style="max-width:900px;width:95vw;height:90vh;display:flex;flex-direction:column;overflow:hidden;">
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;flex-shrink:0;">
-                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.7);">Weather · Lulin Observatory</h3>
+                <h3 style="margin:0;font-size:1rem;font-weight:500;letter-spacing:normal;text-transform:none;color:var(--kw-text-primary, #f5f5f7);">Weather · Lulin Observatory</h3>
                 <button type="button" onclick="document.getElementById('weatherModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
             </div>
             <iframe data-lazy-src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;flex:1;border:none;display:block;min-height:0;"></iframe>
-            <div style="text-align:right;padding-top:6px;font-size:0.75rem;opacity:0.45;flex-shrink:0;">
+            <div style="text-align:right;padding-top:6px;font-size: 0.75rem;opacity:0.45;flex-shrink:0;">
                 <!-- DO NOT REMOVE THIS LINK -->
                 <a href="https://www.meteoblue.com/en/weather/week/index" target="_blank" rel="noopener noreferrer" style="color:#fff;text-decoration:none;">meteoblue</a>
             </div>
         </div>
-    </div>
+    </dialog>
     
     <!-- New Target Modal -->
-    <div id="targetModal" class="pa-modal-overlay">
+    <dialog id="targetModal" class="pa-modal-overlay" aria-labelledby="target-modal-title">
         <div class="pa-modal-box pa-target-box">
             <!-- one screen, no scrolling: target | exposure plan | the target tonight -->
             <div class="pa-tw-head">
-                <h3 id="target-modal-title">New Target</h3>
-                <button type="button" class="pa-tw-close" onclick="closeTargetModal()" aria-label="Close">&times;</button>
+                <h3 id="target-modal-title" tabindex="-1" autofocus>New Target</h3>
+                <div class="pa-tw-actions">
+                    <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
+                    <button type="submit" form="add-target-form" class="pa-btn-save">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <span id="target-modal-submit-label">Save Target</span>
+                    </button>
+                </div>
             </div>
             <div class="pa-target-grid">
 
@@ -848,8 +868,10 @@
                          MAG column takes magnitudes per filter -->
                     <input type="hidden" id="obs-mag">
                     <div class="pa-tw-pair">
-                        <input type="text" id="obs-ra" required placeholder="RA (h:m:s or deg)" class="pa-input">
-                        <input type="text" id="obs-dec" required placeholder="Dec (d:m:s or deg)" class="pa-input">
+                        <label class="pa-field"><span class="pa-field-label">RA</span>
+                            <input type="text" id="obs-ra" required placeholder="h:m:s or deg" class="pa-input"></label>
+                        <label class="pa-field"><span class="pa-field-label">Dec</span>
+                            <input type="text" id="obs-dec" required placeholder="d:m:s or deg" class="pa-input"></label>
                     </div>
                     <div class="pa-tw-pair">
                         <label class="pa-field"><span class="pa-field-label">Priority</span>
@@ -873,16 +895,13 @@
                         </label>
                     </div>
 
-                    <input type="text" id="obs-plan" placeholder="Note (required for Urgent)" class="pa-input">
-                    <input type="text" id="obs-note-gl" placeholder="Note for GREATLab" class="pa-input">
-
-                    <div class="pa-modal-footer">
-                        <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
-                        <button type="submit" class="pa-btn-save">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            <span id="target-modal-submit-label">Save Target</span>
-                        </button>
+                    <div class="pa-tw-pair">
+                        <label class="pa-field"><span class="pa-field-label">Note for Lulin</span>
+                            <input type="text" id="obs-plan" placeholder="Urgent: required" class="pa-input"></label>
+                        <label class="pa-field"><span class="pa-field-label">Note for GREATLab</span>
+                            <input type="text" id="obs-note-gl" placeholder="What and why" class="pa-input"></label>
                     </div>
+
                 </section>
 
                 <!-- column 2: exposures -->
@@ -921,6 +940,7 @@
                             </button>
                             <button type="button" onclick="addAllFilters(['up', 'gp', 'rp', 'ip', 'zp'])" class="pa-btn-link">All ugriz</button>
                         </div>
+                        <div id="auto-exp-choose" class="pa-auto-choose-slot"></div>
                     </div>
                 </section>
             </form>
@@ -928,16 +948,16 @@
             <aside id="targetPreview" class="pa-target-preview" aria-label="The target tonight"></aside>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <!-- Log Modal (Add/Edit) -->
-    <div id="logModal" class="pa-modal-overlay">
+    <dialog id="logModal" class="pa-modal-overlay">
         <div class="pa-modal-box">
             <h3>Add / Edit Observation Log</h3>
             <form onsubmit="saveObservationLog(event)">
                 <div class="pa-form-row">
                     <div class="pa-field">
-                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Member</span>
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.875rem;">Member</span>
                         <select id="log-edit-user" class="pa-input" required>
                             <option value="">-- Select Member --</option>
                         </select>
@@ -946,7 +966,7 @@
 
                 <div class="pa-form-row" style="margin-top: 15px;">
                     <div class="pa-field" style="width: 100%;">
-                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Target</span>
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.875rem;">Target</span>
                         <div id="log-edit-target-display" class="pa-input" style="display:flex; align-items:center; min-height:40px; opacity:0.9;"></div>
                     </div>
                 </div>
@@ -957,7 +977,7 @@
 
                 <div class="pa-form-row" style="margin-top: 15px;">
                     <div class="pa-field" style="width: 160px;">
-                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Priority</span>
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.875rem;">Priority</span>
                         <select id="log-edit-priority" class="pa-input">
                             <option value="Normal">Normal</option>
                             <option value="High">High</option>
@@ -965,11 +985,11 @@
                         </select>
                     </div>
                     <div class="pa-field" style="width: 80px;">
-                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Repeat</span>
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.875rem;">Repeat</span>
                         <input type="number" id="log-edit-repeat-count" class="pa-input" min="0" step="1" value="0" style="width:100%;">
                     </div>
                     <div class="pa-field" style="width: 100%; margin-top: 12px;">
-                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.9rem;">Program</span>
+                        <span class="pa-field-label" style="display: block; margin-bottom: 5px; color: #aaa; font-size: 0.875rem;">Program</span>
                         <input type="text" id="log-edit-program" class="pa-input" placeholder="e.g. R01">
                     </div>
                 </div>
@@ -987,7 +1007,7 @@
 
                 <!-- Trigger detail fields -->
                 <div id="trigger-fields" style="display:none; margin-top: 14px; padding: 12px; border: 1px solid var(--kw-accent-border); border-radius: var(--kw-radius-md); background: var(--kw-accent-dim);">
-                    <div style="color: var(--kw-accent); font-size: 0.85rem; margin-bottom: 10px; font-weight: 600;">Trigger Details</div>
+                    <div style="color: var(--kw-accent); font-size: 0.875rem; margin-bottom: 10px; font-weight: 600;">Trigger Details</div>
                     <div id="log-trigger-filter-rows" class="pa-filter-rows"></div>
                     <div class="pa-filter-actions">
                         <button type="button" onclick="addLogFilterRow('trigger', 'rp')" class="pa-btn-link">
@@ -998,7 +1018,7 @@
 
                 <!-- Observed detail fields -->
                 <div id="observed-fields" style="display:none; margin-top: 14px; padding: 12px; border: 1px solid rgba(76,175,80,0.3); border-radius: 8px; background: rgba(76,175,80,0.05);">
-                    <div style="color: #4caf50; font-size: 0.85rem; margin-bottom: 10px; font-weight: 600;">Observed Details</div>
+                    <div style="color: #4caf50; font-size: 0.875rem; margin-bottom: 10px; font-weight: 600;">Observed Details</div>
                     <div id="log-observed-filter-rows" class="pa-filter-rows"></div>
                     <div class="pa-filter-actions">
                         <button type="button" onclick="addLogFilterRow('observed', 'rp')" class="pa-btn-link">
@@ -1017,10 +1037,10 @@
                 </div>
             </form>
         </div>
-    </div>
+    </dialog>
 
     <!-- Visibility Plot Modal -->
-    <div id="visibilityPlotModal" class="pa-modal-overlay">
+    <dialog id="visibilityPlotModal" class="pa-modal-overlay">
         <div class="pa-modal-box" style="max-width: 90vw; width: 1200px; height: 85vh; display: flex; flex-direction: column;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 15px;">
                 <h3 style="margin: 0;">Visibility Plot (<span id="vp-tab-name">SLT</span>)</h3>
@@ -1028,9 +1048,9 @@
             </div>
             
             <!-- Body area -->
-            <div style="display: flex; gap: 20px; flex: 1; min-height: 0;">
+            <div class="pa-vp-body" style="display: flex; gap: 20px; flex: 1; min-height: 0;">
                 <!-- Left: Plotly Plot -->
-                <div style="flex: 1; background: rgba(0,0,0,0.2); border-radius: 8px; position: relative;">
+                <div class="pa-vp-plot" style="flex: 1; min-width: 0; background: rgba(0,0,0,0.2); border-radius: 8px; position: relative;">
                     <div id="vp-loading" style="position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); color: #aaa;">Computing visibility...</div>
                     <div id="vp-plot-area" style="width: 100%; height: 100%;"></div>
                 </div>
@@ -1043,20 +1063,20 @@
                 </div>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <!-- Script Visibility Image Lightbox (enlarges the static JPG that goes out with the trigger) -->
-    <div id="scriptVisImageModal" class="pa-modal-overlay" onclick="if(event.target===this) closeScriptVisImageModal()">
+    <dialog id="scriptVisImageModal" class="pa-modal-overlay" onclick="if(event.target===this) closeScriptVisImageModal()">
         <div class="pa-modal-box" style="max-width: 92vw; width: auto; padding: 1rem; background: #0b0d10;">
             <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
                 <button type="button" onclick="closeScriptVisImageModal()" class="pa-btn-cancel" style="padding: 5px 14px;">Close</button>
             </div>
             <img id="script-vis-img-large" src="" alt="Visibility plot" style="max-width: 100%; max-height: 80vh; display: block; margin: 0 auto; border-radius: 6px;">
         </div>
-    </div>
+    </dialog>
 
     <!-- Send flow — step 1: confirm account -->
-    <div id="sendStep1Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
+    <dialog id="sendStep1Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
         <div class="pa-modal-box" style="max-width: 440px;">
             <h3 style="margin-top:0;">Step 1 of 3 — Confirm Account</h3>
             <p class="pa-send-modal-text">You're currently logged in as:</p>
@@ -1070,10 +1090,10 @@
                 <button type="button" onclick="advanceSendTriggerFlow(1)" class="pa-btn-save">Yes, that's me</button>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <!-- Send flow — step 2: review telescope / targets / plot -->
-    <div id="sendStep2Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
+    <dialog id="sendStep2Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
         <div class="pa-modal-box" style="max-width: 640px;">
             <h3 style="margin-top:0;">Step 2 of 3 — Review Before Sending</h3>
             <p class="pa-send-modal-text">Telescope: <strong id="send-review-telescope">SLT</strong></p>
@@ -1081,16 +1101,16 @@
             <div class="pa-send-review-img-wrap">
                 <img id="send-review-img" src="" alt="Visibility plot">
             </div>
-            <p class="pa-send-modal-text" style="opacity:0.65; font-size:0.8rem;">Double-check the telescope, target list, and plot above are correct.</p>
+            <p class="pa-send-modal-text" style="opacity:0.65; font-size: 0.8125rem;">Double-check the telescope, target list, and plot above are correct.</p>
             <div class="pa-modal-footer">
                 <button type="button" onclick="cancelSendTriggerFlow()" class="pa-btn-cancel">Cancel</button>
                 <button type="button" onclick="advanceSendTriggerFlow(2)" class="pa-btn-save">Looks correct</button>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <!-- Send flow — step 3: final confirmation -->
-    <div id="sendStep3Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
+    <dialog id="sendStep3Modal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSendTriggerFlow()">
         <div class="pa-modal-box" style="max-width: 440px;">
             <h3 style="margin-top:0;">Step 3 of 3 — Send?</h3>
             <p class="pa-send-modal-text">This will post the script message and plot to the <strong id="send-confirm-channel">Slack</strong> channel right now. This cannot be undone.</p>
@@ -1099,10 +1119,10 @@
                 <button type="button" id="send-final-confirm-btn" onclick="advanceSendTriggerFlow(3)" class="pa-btn-send-trigger" style="justify-content:center;">Send Now</button>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <!-- Single-target Trigger — script preview + send confirmation -->
-    <div id="singleTriggerConfirmModal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSingleTriggerFlow()">
+    <dialog id="singleTriggerConfirmModal" class="pa-modal-overlay" onclick="if(event.target===this) cancelSingleTriggerFlow()">
         <div class="pa-modal-box" style="max-width: 640px;">
             <h3 style="margin-top:0;">Trigger <span id="single-trigger-target-name">Target</span></h3>
             <p class="pa-send-modal-text">Script for <strong id="single-trigger-telescope">SLT</strong>:</p>
@@ -1116,7 +1136,7 @@
                 <button type="button" id="single-trigger-send-btn" onclick="confirmSingleTriggerSend()" class="pa-btn-send-trigger" style="justify-content:center;">Send Now</button>
             </div>
         </div>
-    </div>
+    </dialog>
 
     <!-- Global scroll-to-top button -->
     <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});" aria-label="Scroll to top">
@@ -1131,6 +1151,8 @@
     <script src="{{ url_for('static', filename='js/lc_plot.js') }}"></script>
     <script type="application/json" id="filterColorsData">{{ filter_colors | default({}) | tojson }}</script>
     <script src="{{ url_for('static', filename='js/dt_auto.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dt_dialogs.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/kinder_icons.js') }}" defer></script>
     <script>
         (function() {
             var btn = document.getElementById("scrollToTopBtn");

@@ -227,7 +227,7 @@
 .lc-mini { list-style: none; margin: 0; padding: 0; }
 .lc-mini-day { padding: 8px 0; border-top: 1px solid var(--kw-hairline); }
 .lc-mini-day:first-child { border-top: 0; }
-.lc-mini-d { margin: 0 0 4px; font-size: 0.74rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--kw-text-muted); }
+.lc-mini-d { margin: 0 0 4px; font-size: 0.75rem; font-weight: 600; color: var(--kw-text-muted); }
 .lc-mini-day.is-today .lc-mini-d { color: var(--kw-accent); }
 .lc-mini-ev { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: 0.86rem; color: var(--kw-text-primary); }
 .lc-mini-ev .lc-chip { flex-shrink: 0; }
