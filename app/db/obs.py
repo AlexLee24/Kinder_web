@@ -18,13 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_auto_exposure_column() -> None:
-    """Add auto_exposure column to obs.targets if not present (idempotent)."""
+    """Add the auto exposure columns to obs.targets if not present (idempotent): auto_exposure, and for its CASTOR
+    plan (app/services/planning/auto_exposure.py) the target S/N, the plan chosen (auto / all / gr / r) and the
+    last computed result."""
     try:
         with get_db_connection() as conn:
             cur = conn.cursor()
             cur.execute(
                 "ALTER TABLE obs.targets "
-                "ADD COLUMN IF NOT EXISTS auto_exposure BOOLEAN NOT NULL DEFAULT FALSE"
+                "ADD COLUMN IF NOT EXISTS auto_exposure BOOLEAN NOT NULL DEFAULT FALSE, "
+                "ADD COLUMN IF NOT EXISTS auto_snr DOUBLE PRECISION NOT NULL DEFAULT 20, "
+                "ADD COLUMN IF NOT EXISTS auto_plan TEXT NOT NULL DEFAULT 'auto', "
+                "ADD COLUMN IF NOT EXISTS auto_result JSONB"
             )
             conn.commit()
     except Exception as e:
@@ -145,7 +150,7 @@ _TARGET_SELECT = (
     "SELECT t.target_id, t.active, t.name, t.mag, t.ra, t.dec, "
     "t.telescope, t.program, t.priority, t.plan_filter, t.plan_count, "
     "t.plan_time, t.repeat, t.plan, t.note, t.create_by, "
-    "t.auto_exposure, t.off_since, t.keep, "
+    "t.auto_exposure, t.auto_snr, t.auto_plan, t.auto_result, t.off_since, t.keep, "
     "(SELECT MAX(l.date) FROM obs.logs l WHERE l.target_id = t.target_id AND l.observed) AS last_observed, "
     "u.email AS created_by_email "
     "FROM obs.targets t "
@@ -206,6 +211,8 @@ def save_observation_target(name: str, ra: float, dec: float,
                              note: str = '',
                              created_by_email: str | None = None,
                              auto_exposure: bool = False,
+                             auto_snr: float = 20,
+                             auto_plan: str = 'auto',
                              **legacy_kwargs) -> int | None:
     """Insert or update an observation target.  Returns target_id."""
     if legacy_kwargs.get('repeat_count') is not None:
@@ -247,19 +254,19 @@ def save_observation_target(name: str, ra: float, dec: float,
             cur.execute(
                 "INSERT INTO obs.targets "
                 "(active, name, mag, ra, dec, telescope, program, priority, "
-                " plan_filter, plan_count, plan_time, repeat, plan, note, create_by, auto_exposure) "
-                "VALUES (TRUE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                " plan_filter, plan_count, plan_time, repeat, plan, note, create_by, auto_exposure, auto_snr, auto_plan) "
+                "VALUES (TRUE,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
                 "ON CONFLICT (name, telescope) DO UPDATE SET "
                 "  mag=EXCLUDED.mag, ra=EXCLUDED.ra, dec=EXCLUDED.dec, "
                 "  program=EXCLUDED.program, "
                 "  priority=EXCLUDED.priority, plan_filter=EXCLUDED.plan_filter, "
                 "  plan_count=EXCLUDED.plan_count, plan_time=EXCLUDED.plan_time, "
                 "  repeat=EXCLUDED.repeat, plan=EXCLUDED.plan, note=EXCLUDED.note, "
-                "  auto_exposure=EXCLUDED.auto_exposure "
+                "  auto_exposure=EXCLUDED.auto_exposure, auto_snr=EXCLUDED.auto_snr, auto_plan=EXCLUDED.auto_plan "
                 "RETURNING target_id",
                 (name, mag, ra, dec, telescope, program, priority,
                  plan_filter, plan_count, plan_time,
-                 repeat, plan, note, create_by, auto_exposure)
+                 repeat, plan, note, create_by, auto_exposure, auto_snr, auto_plan)
             )
             target_id = cur.fetchone()[0]
             conn.commit()
@@ -275,7 +282,7 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
         'name': 'name', 'mag': 'mag', 'ra': 'ra', 'dec': 'dec',
         'telescope': 'telescope', 'program': 'program', 'priority': 'priority',
         'repeat': 'repeat', 'plan': 'plan', 'note': 'note',
-        'auto_exposure': 'auto_exposure',
+        'auto_exposure': 'auto_exposure', 'auto_snr': 'auto_snr', 'auto_plan': 'auto_plan',
     }
     sets = []
     params = []
@@ -334,6 +341,30 @@ def update_observation_target(target_id: int, **kwargs) -> bool:
         return updated
     except Exception as e:
         logger.error("update_observation_target %d: %s", target_id, e)
+        return False
+
+
+def set_auto_exposure_result(target_id: int, result: dict, filters: list | None = None, mag=None) -> bool:
+    """Store a target's CASTOR auto exposure plan; with filters, they become its plan (what the script observes);
+    with mag, its magnitude (the latest detection the plan was computed from)."""
+    import json
+    sets, params = ['auto_result = %s'], [json.dumps(result)]
+    if filters is not None:
+        sets += ['plan_filter = %s', 'plan_count = %s', 'plan_time = %s']
+        params += [[f['filter'] for f in filters], [int(f['count']) for f in filters], [int(f['exp']) for f in filters]]
+    if mag is not None:
+        sets.append('mag = %s')
+        params.append(round(float(mag), 2))
+    try:
+        _ensure_auto_exposure_column()
+        with get_db_connection() as conn:
+            cur = conn.cursor()
+            cur.execute(f"UPDATE obs.targets SET {', '.join(sets)} WHERE target_id = %s", params + [target_id])
+            ok = cur.rowcount > 0
+            conn.commit()
+        return ok
+    except Exception as e:
+        logger.error("set_auto_exposure_result %s: %s", target_id, e)
         return False
 
 

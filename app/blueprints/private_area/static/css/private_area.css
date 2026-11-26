@@ -1222,12 +1222,35 @@ body::before {
 /* Auto exposure */
 .pa-auto-exp-container {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    gap: 8px;
     margin-bottom: 1rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     padding-bottom: 1.5rem;
 }
+.pa-auto-exp-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.pa-auto-snr { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--kw-text-secondary, #bbb); }
+.pa-auto-snr input { width: 64px; padding: 4px 6px; }
+.pa-auto-exp-help { margin: 0; font-size: 0.74rem; color: var(--kw-text-muted, #888); line-height: 1.45; }
+.pa-auto-plan { display: flex; flex-direction: column; gap: 8px; font-size: 0.8rem; }
+.pa-auto-plan-head { color: var(--kw-text-secondary, #bbb); }
+.pa-auto-opts { display: flex; flex-wrap: wrap; gap: 6px; border: 0; margin: 0; padding: 0; }
+.pa-auto-opts legend { padding: 0; margin-bottom: 4px; font-size: 0.74rem; color: var(--kw-text-muted, #888); }
+.pa-auto-opt { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+               border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.03); }
+.pa-auto-opt:has(input:checked) { border-color: #4db8ff; background: rgba(77, 184, 255, 0.12); }
+.pa-auto-opt input { margin: 0; accent-color: #4db8ff; }
+.pa-auto-opt .pa-auto-t { font-family: var(--kw-font-mono, monospace); color: var(--kw-text-muted, #999); }
+.pa-auto-opt.is-long .pa-auto-t { color: #ffb74d; }
+.pa-auto-tbl { width: 100%; border-collapse: collapse; }
+.pa-auto-tbl th, .pa-auto-tbl td { padding: 3px 10px 3px 0; text-align: left; font-weight: 400; white-space: nowrap; }
+.pa-auto-tbl thead th { font-size: 0.72rem; color: var(--kw-text-muted, #888); }
+.pa-auto-tbl td.is-num { font-family: var(--kw-font-mono, monospace); }
+.pa-auto-tbl .is-off td { opacity: 0.45; }
+.pa-auto-from { color: var(--kw-text-muted, #888); white-space: normal; }
+.pa-auto-warn { margin: 0; color: #ffb74d; }
+.pa-auto-badge { display: inline-block; margin-top: 2px; font-size: 0.7rem; color: #4ade80; }
+.pa-auto-badge.is-warn { color: #ffb74d; }
 
 .pa-auto-exp-hint {
     color: #ffb74d;

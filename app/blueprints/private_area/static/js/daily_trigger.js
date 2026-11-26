@@ -352,8 +352,10 @@ function openTargetModal(telescope) {
     document.getElementById('add-target-form').reset();
     obsFilters = [];
     isAutoExposure = false;
+    autoResult = null; autoPlan = 'auto';
     toggleTelescopeUI(telescope);
     renderFilterRows();
+    _renderAutoPlan();
     // Clear name hint on open
     var hint = document.getElementById('obs-name-hint');
     if (hint) { hint.textContent = ''; hint.className = 'pa-name-hint'; }
@@ -430,72 +432,116 @@ function toggleTelescopeUI(telescope) {
     renderFilterRows();
 }
 
-// ===================== Auto Exposure Badge =====================
+// ===================== Auto Exposure (CASTOR) =====================
+// The plan comes from /api/auto_exposure (app/services/planning/auto_exposure.py): every filter's frames for the
+// target S/N, and three plans (u g r i z, g + r, r only) with their time at the telescope. 'auto' takes the first
+// within max_total_s; the observer can pin one, or pick Custom and edit the filters (no longer auto).
+let autoResult = null, autoPlan = 'auto';
+const AUTO_PLANS = [['all', 'u g r i z'], ['gr', 'g + r'], ['r', 'r only']];
+
 function _setAutoExpBadge(on) {
     isAutoExposure = on;
     const hintEl = document.getElementById('auto-exp-hint');
     if (!hintEl) return;
-    if (on) {
-        hintEl.innerText = '\u2713 AUTO';
-        hintEl.style.color = '#4ade80';
-        hintEl.style.fontWeight = '600';
-    } else {
-        hintEl.innerText = '';
-        hintEl.style.color = '';
-        hintEl.style.fontWeight = '';
-    }
+    hintEl.innerText = on ? '✓ AUTO' : '';
+    hintEl.style.color = on ? '#4ade80' : '';
+    hintEl.style.fontWeight = on ? '600' : '';
 }
 
+// A manual change to the filter rows: the target keeps its own filters (Custom)
 function _clearAutoExposureState() {
-    if (isAutoExposure) { _setAutoExpBadge(false); }
+    if (isAutoExposure) { _setAutoExpBadge(false); _renderAutoPlan(); }
 }
 
-// ===================== Auto Exposure Button =====================
+function _autoSnr() {
+    const v = parseFloat((document.getElementById('obs-auto-snr') || {}).value);
+    return isFinite(v) && v > 0 ? v : 20;
+}
+function _fmtSec(s) { return s < 90 ? s + ' s' : Math.round(s / 60) + ' min'; }
+function _autoChosen(res, plan) {
+    if (plan !== 'auto') return plan;
+    return (AUTO_PLANS.find(([k]) => res.options[k].filters.length && res.options[k].total_s <= res.max_total_s) || ['r'])[0];
+}
+function _autoFilters(res, key) {
+    return res.options[key].filters.map(sf => ({ filter: sf, exp: res.filters[sf].exp, count: res.filters[sf].count }));
+}
+
+function _useAutoPlan(plan) {
+    if (!autoResult) return;
+    if (plan === 'custom') { _setAutoExpBadge(false); _renderAutoPlan(); return; }
+    autoPlan = plan;
+    obsFilters = _autoFilters(autoResult, _autoChosen(autoResult, plan));
+    _setAutoExpBadge(true);
+    renderFilterRows();
+    _renderAutoPlan();
+}
+
+function _renderAutoPlan() {
+    const box = document.getElementById('auto-exp-plan');
+    if (!box) return;
+    const res = autoResult;
+    if (!res || !res.options) { box.hidden = true; box.innerHTML = ''; return; }
+    const chosen = isAutoExposure ? _autoChosen(res, autoPlan) : null;
+    const when = new Date(res.when).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Taipei' });
+    const opt = (val, label, extra, long) => '<label class="pa-auto-opt' + (long ? ' is-long' : '') + '"><input type="radio" name="auto-plan" value="' + val + '"' +
+        ((isAutoExposure ? autoPlan === val : val === 'custom') ? ' checked' : '') + ' onchange="_useAutoPlan(this.value)"> ' + escapeHtml(label) +
+        (extra ? ' <span class="pa-auto-t">' + escapeHtml(extra) + '</span>' : '') + '</label>';
+    const lim = _fmtSec(res.max_total_s);
+    let html = '<div class="pa-auto-plan-head">Tonight: highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr + '</div>';
+    html += '<fieldset class="pa-auto-opts"><legend>Plan (time at the telescope)</legend>' +
+        opt('auto', 'Auto', 'longest within ' + lim + ': ' + AUTO_PLANS.find(([k]) => k === _autoChosen(res, 'auto'))[1]) +
+        AUTO_PLANS.map(([k, l]) => opt(k, l, _fmtSec(res.options[k].total_s), res.options[k].total_s > res.max_total_s)).join('') +
+        opt('custom', 'Custom', 'edit the filters below') + '</fieldset>';
+    const band = sf => sf.replace(/p$/, '');
+    const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
+    const from = f => f.from === 'own' ? day(f.mjd) + ' · ' + (f.source || '')
+        : f.from === 'other' ? f.filter + ' ' + day(f.mjd) + ' (none in this filter)' : 'typed above';
+    const inPlan = chosen ? res.options[chosen].filters : [];
+    html += '<table class="pa-auto-tbl"><thead><tr><th scope="col">Filter</th><th scope="col">Mag</th><th scope="col">From</th><th scope="col">Frames</th><th scope="col">S/N</th></tr></thead><tbody>' +
+        ['up', 'gp', 'rp', 'ip', 'zp'].map(sf => {
+            const f = res.filters[sf];
+            const frames = f.exp ? f.exp + ' s × ' + f.count : (f.status || '—');
+            return '<tr class="' + (chosen && !inPlan.includes(sf) ? 'is-off' : '') + '"><th scope="row">' + band(sf) + '</th><td class="is-num">' + f.mag.toFixed(2) +
+                '</td><td class="pa-auto-from">' + escapeHtml(from(f)) + '</td><td class="is-num">' + escapeHtml(frames) + '</td><td class="is-num">' + (f.snr != null ? f.snr.toFixed(0) : '—') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    const warn = [];
+    if (chosen && res.options[chosen].total_s > res.max_total_s) warn.push(AUTO_PLANS.find(([k]) => k === chosen)[1] + ' takes ' + _fmtSec(res.options[chosen].total_s) + ', over ' + lim + '.');
+    (res.notes || []).forEach(n => warn.push(n));
+    if (warn.length) html += '<p class="pa-auto-warn">' + escapeHtml(warn.join(' ')) + '</p>';
+    box.innerHTML = html;
+    box.hidden = false;
+}
+
+function onAutoSnrChange() {
+    if (autoResult) applyAutoExposure();
+}
+
 async function applyAutoExposure() {
-    const telescope = document.getElementById('obs-telescope').value;
-    const magInput = document.getElementById('obs-mag').value.trim();
     const hintEl = document.getElementById('auto-exp-hint');
-
-    if (!magInput) {
-        if (hintEl) hintEl.innerText = 'Please enter magnitude first';
-        setTimeout(() => { if (hintEl) hintEl.innerText = ''; }, 3000);
-        return;
-    }
-
-    const magNumeric = magInput.replace(/^>/, '').trim();
-    const mag = parseFloat(magNumeric);
-    if (isNaN(mag)) {
-        if (hintEl) hintEl.innerText = 'Invalid magnitude value';
-        setTimeout(() => { if (hintEl) hintEl.innerText = ''; }, 3000);
-        return;
-    }
-
-    if (hintEl) hintEl.innerText = 'Loading...';
-
+    const say = (t, keep) => { if (hintEl) { hintEl.style.color = ''; hintEl.innerText = t; } if (!keep) setTimeout(() => { if (hintEl && hintEl.innerText === t) hintEl.innerText = ''; }, 5000); };
+    const body = {
+        name: document.getElementById('obs-name').value.trim(),
+        ra: document.getElementById('obs-ra').value.trim(),
+        dec: document.getElementById('obs-dec').value.trim(),
+        mag: document.getElementById('obs-mag').value.trim(),
+        auto_snr: _autoSnr(),
+        auto_plan: autoPlan
+    };
+    if (!body.name || !body.ra || !body.dec) { say('Enter the name and coordinates first'); return; }
+    say('Asking CASTOR…', true);
     try {
-        const resp = await _apiFetch('/api/auto_exposure?mag=' + encodeURIComponent(magInput) + '&telescope=' + encodeURIComponent(telescope));
+        const resp = await _apiFetch('/api/auto_exposure', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: _apiStringify(body) });
         const data = await resp.json();
-
-        if (data.error) {
-            if (hintEl) hintEl.innerText = data.error;
-            setTimeout(() => { if (hintEl) hintEl.innerText = ''; }, 4000);
+        if (!data.success) {
+            say(data.error || 'Auto exposure failed', true);
+            if (/magnitude/i.test(data.error || '')) document.getElementById('obs-mag').focus();
             return;
         }
-
-        if (data.success && data.filters) {
-            obsFilters = data.filters.map(f => ({ filter: f.filter, exp: f.exp, count: f.count }));
-            const summary = obsFilters.map(f => f.filter + ' ' + f.exp + 's x' + f.count).join(', ');
-            // Show persistent AUTO badge (cleared on any manual filter change)
-            _setAutoExpBadge(true);
-            if (hintEl) {
-                hintEl.innerText = '\u2713 AUTO \u2014 ' + summary;
-            }
-            renderFilterRows();
-        }
+        autoResult = data.result;
+        _useAutoPlan(autoPlan);
     } catch (e) {
         console.error('Auto exposure error:', e);
-        if (hintEl) hintEl.innerText = 'Network error';
-        setTimeout(() => { if (hintEl) hintEl.innerText = ''; }, 3000);
+        say('Network error');
     }
 }
 
@@ -656,6 +702,8 @@ async function addObservationTarget(event) {
         priority: priority,
         repeat_count: repeatCount,
         auto_exposure: isAutoExposure,
+        auto_snr: _autoSnr(),
+        auto_plan: autoPlan,
         filters: obsFilters,
         plan: plan,
         note_gl: note_gl,
@@ -1165,6 +1213,15 @@ function renderTable(telescope, targets) {
             filterExpHTML += '</div>';
         }
 
+        // auto exposure: its S/N and plan, or why tonight's plan could not be made
+        if (t.auto_exposure && t.telescope !== 'LOT') {
+            const ar = t.auto_result || {};
+            const planName = { all: 'u g r i z', gr: 'g + r', r: 'r only' }[ar.chosen] || '';
+            const warn = ar.error || (ar.too_long ? planName + ' over ' + Math.round((ar.max_total_s || 1800) / 60) + ' min' : '');
+            filterExpHTML += '<div class="pa-auto-badge' + (warn ? ' is-warn' : '') + '" title="' + escapeHtml(ar.error || ('CASTOR plan for ' + (ar.night || 'tonight'))) + '">AUTO · S/N ' +
+                escapeHtml(t.auto_snr || 20) + (planName ? ' · ' + escapeHtml(planName) : '') + (warn ? ' · ' + escapeHtml(ar.error ? 'no plan' : warn) : '') + '</div>';
+        }
+
         let programBadge = '';
         if (t.telescope === 'LOT' && t.program) {
             programBadge = '<span class="pa-program-badge">' + escapeHtml(t.program) + '</span>';
@@ -1313,9 +1370,14 @@ async function editTarget(id) {
         return { filter: f.filter || '', exp: f.exp || 300, count: f.count || 1 };
     }) : [];
 
-    // Restore auto exposure badge state
+    // Restore auto exposure: its S/N, plan and last CASTOR result
     const wasAuto = !!t.auto_exposure && t.telescope !== 'LOT';
+    const snrEl = document.getElementById('obs-auto-snr');
+    if (snrEl) snrEl.value = t.auto_snr || 20;
+    autoPlan = t.auto_plan || 'auto';
+    autoResult = t.auto_result && t.auto_result.options ? t.auto_result : null;
     _setAutoExpBadge(wasAuto);
+    _renderAutoPlan();
 
     toggleTelescopeUI(t.telescope);
     renderFilterRows();
@@ -3015,7 +3077,8 @@ function _scriptTargetPriorityRank(priority) {
 // expected by /astronomy_tools/generate_trigger_script. Shared by the full
 // nightly script flow and the single-target "Trigger" quick-action.
 function _buildScriptPayloadTarget(t) {
-    const useAutoExp = !!t.auto_exposure;
+    // An auto target observes its CASTOR plan, stored as its filters; the old magnitude table only without one
+    const useAutoExp = !!t.auto_exposure && !(Array.isArray(t.filters) && t.filters.length);
     const item = {
         name: t.name,
         ra: t.ra,

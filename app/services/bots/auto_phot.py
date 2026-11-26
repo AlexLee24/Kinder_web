@@ -49,7 +49,13 @@ def _run(nights=BACKFILL_NIGHTS):
         if _stop():
             lines.append('Stopped.')
             break
-    status.update(BOT, detail={'nights': lines[::-1]})
+    ae = ''
+    try:                                   # last night's points are in: tonight's auto exposure plans from them
+        from app.services.planning.auto_exposure import update_all
+        ae = update_all()
+    except Exception as e:
+        log.warning('auto exposure update failed: %s', e)
+    status.update(BOT, detail={'nights': lines[::-1], 'auto_exposure': ae})
     return lines[-1] if lines else 'Nothing to do.'
 
 

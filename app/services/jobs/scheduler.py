@@ -18,6 +18,8 @@ these jobs in UTC too):
     daily_backup                   03:00      pg_dump -> app/data/backups/
     daily_phot_fetch               03:30      photometry for every Inbox object
     daily_detect_followups         04:00      DETECT re-screens every Follow-up object
+    daily_auto_exposure            04:00      Daily Trigger SLT auto-exposure targets: tonight's CASTOR plan (UTC+8 12:00;
+                                              again after bot_auto_phot has measured last night)
     daily_target_mag_update        05:00      refresh obs.targets magnitudes
     daily_retire_stale_followups   05:30      Follow-up/Snoozed -> Finish
     prune_off_targets              hourly     Daily Trigger targets switched off > 3 days (not kept) -> deleted
@@ -256,6 +258,7 @@ def _run_background_jobs(app):
         update_target_mags,
     )
     from app.services.pipeline.autophot import cleanup_expired as _pipeline_cleanup
+    from app.services.planning.auto_exposure import update_all as _auto_exposure_update
     from app.services.jobs.target_cleanup import prune_off_targets as _prune_off_targets
     from app.services.tns.auto_tns_download import start_auto_tns_downloader
     from app.services.tns.tns_gap_filler import start_gap_filler
@@ -267,6 +270,7 @@ def _run_background_jobs(app):
         _scheduler.add_job(_tracked('daily_backup', run_daily_backup),                        'cron', hour=3, minute=0,  id='daily_backup')
         _scheduler.add_job(_tracked('daily_phot_fetch', fetch_inbox_photometry),              'cron', hour=3, minute=30, id='daily_phot_fetch')
         # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0,                      id='hourly_missing_phot')
+        _scheduler.add_job(_tracked('daily_auto_exposure', _auto_exposure_update),            'cron', hour=4, minute=0,  id='daily_auto_exposure')
         _scheduler.add_job(_tracked('daily_target_mag_update', update_target_mags),           'cron', hour=5, minute=0,  id='daily_target_mag_update')
         _scheduler.add_job(_tracked('daily_retire_stale_followups', retire_stale_followups),  'cron', hour=5, minute=30, id='daily_retire_stale_followups')
         _scheduler.add_job(_tracked('prune_off_targets', _prune_off_targets),                 'interval', hours=1,      id='prune_off_targets')
