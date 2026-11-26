@@ -210,3 +210,12 @@ def test_a_magnitude_typed_for_a_filter_replaces_the_automatic_one(monkeypatch):
     assert res['filters']['zp']['from'] == 'own' and res['filters']['ip']['from'] == 'bright'
     nophot = ae.compute('SN 2026x', 47.9, -2.0, detections=[], now_mjd=NOW, mags_set={'rp': 19.0})
     assert nophot['filters']['rp']['mag'] == 19.0 and nophot['filters']['gp']['mag'] == 19.0
+
+
+def test_detections_older_than_a_month_are_not_used():
+    old = [{'mag': 17.0, 'mjd': NOW - 40, 'filter': 'r', 'source': 'ZTF'}]
+    with pytest.raises(ae.NoMagnitude):
+        ae.magnitudes('X', None, old, NOW)
+    assert ae.magnitudes('X', '19', old, NOW)['rp']['from'] == 'typed'
+    m = ae.magnitudes('X', None, old + [{'mag': 18.0, 'mjd': NOW - 20, 'filter': 'g', 'source': 'ZTF'}], NOW)
+    assert m['rp']['mag'] == 18.0 and m['rp']['from'] == 'other'
