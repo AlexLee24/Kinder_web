@@ -2331,3 +2331,11 @@ body::before {
         overflow-x: hidden;
     }
 }
+
+/* the Moon's effect on the plan (auto exposure, CASTOR) */
+.pa-auto-moon { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 0.76rem; color: var(--kw-text-muted, #999); }
+.pa-auto-moon b { font-weight: 600; color: #cfd3dc; }
+.pa-auto-moon.is-low b { color: #a8d8a0; }
+.pa-auto-moon.is-moderate b { color: #ffcf70; }
+.pa-auto-moon.is-high b { color: #ff9b8f; }
+.pa-auto-moon-off { color: #ffcf70; }

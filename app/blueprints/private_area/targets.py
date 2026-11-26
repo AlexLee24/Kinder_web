@@ -57,7 +57,8 @@ def _auto_exposure(data, telescope):
         return False, snr, choice, None, None, camera
     try:
         res = ae.compute(data.get('name'), _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec')),
-                         None, snr, choice, telescope=telescope, camera=camera, mags_set=mags_set)   # typed: MAG column only
+                         None, snr, choice, telescope=telescope, camera=camera, mags_set=mags_set,
+                         moon=not data.get('auto_no_moon'))   # typed: MAG column only
     except ae.NoMagnitude as e:
         return auto, snr, choice, None, str(e), camera
     except Exception:
@@ -119,6 +120,7 @@ def api_observation_targets():
             auto_plan=_choice,
             auto_camera=_cam,
             auto_mags=ae_mags(data),
+            auto_no_moon=bool(data.get('auto_no_moon')),
             filters=data.get('filters', []),
             plan=data.get('plan'),
             program=data.get('program'),
@@ -231,6 +233,7 @@ def api_observation_target_update(target_id):
         auto_plan=_choice,
         auto_camera=_cam,
         auto_mags=ae_mags(data),
+        auto_no_moon=bool(data.get('auto_no_moon')),
         filters=data.get('filters', []),
         plan=data.get('plan'),
         program=data.get('program'),
