@@ -33,6 +33,35 @@
         document.body.appendChild(n);
         setTimeout(() => { n.style.animation = 'notificationSlideOut 0.25s forwards'; setTimeout(() => n.remove(), 260); }, 2800);
     }
+    // After a change: show it in place at once, then load the page again under a new URL. A plain location.reload()
+    // could bring the old page back (iPhone home-screen app, 2026-11-26: Volunteer looked done, the week still open
+    // until a manual refresh); a URL never seen before cannot come from any cache.
+    function refreshPage(delay) {
+        setTimeout(() => {
+            const u = new URL(location.href);
+            u.searchParams.set('_r', Date.now().toString(36));
+            location.replace(u.toString());
+        }, delay || 0);
+    }
+    (function dropRefreshMark() {
+        const u = new URL(location.href);
+        if (!u.searchParams.has('_r')) return;
+        u.searchParams.delete('_r');
+        history.replaceState(history.state, '', u.pathname + (u.search || '') + u.hash);
+    })();
+    // A duty week row shows who has it now (before the page comes back)
+    function markWeek(el, who) {
+        const li = el.closest('.lc-week'), cell = li && li.querySelector('.lc-week-who');
+        if (!cell) return;
+        li.classList.toggle('is-open', !who);
+        li.classList.toggle('is-mine', who === 'You');
+        cell.querySelectorAll('.lc-volunteer, .lc-week-out, .lc-linkbtn, small').forEach((n) => n.remove());
+        const tag = document.createElement(who ? 'b' : 'span');
+        tag.className = 'lc-week-pending';
+        tag.textContent = who || 'Open';
+        cell.prepend(tag);
+    }
+
     function api(url, method, body) {
         return fetch(url, {
             method: method || 'GET', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -203,7 +232,7 @@
         if (!confirm('Take Trigger duty for ' + b.dataset.week + '? You will get a push at Lulin sunset each night.')) return;
         b.disabled = true;
         api('/api/lab_calendar/volunteer', 'POST', { week: b.dataset.volunteer })
-            .then(() => { toast('Thanks! You are on Trigger duty for ' + b.dataset.week, 'success'); setTimeout(() => location.reload(), 900); })
+            .then(() => { markWeek(b, 'You'); toast('Thanks! You are on Trigger duty for ' + b.dataset.week, 'success'); refreshPage(900); })
             .catch((err) => { toast(err.message, 'error'); b.disabled = false; });
     }));
     // Admins: put any member on a week, or hand a taken (single) week to someone else
@@ -214,14 +243,14 @@
         if (!confirm((taken ? 'Hand Trigger duty for ' : 'Put ') + (taken ? sel.dataset.label + ' to ' + name : name + ' on Trigger duty for ' + sel.dataset.label) + '?')) { sel.value = ''; return; }
         sel.disabled = true;
         api('/api/lab_calendar/volunteer', 'POST', { week: sel.dataset.week, assignee: who, replace: taken })
-            .then((d) => { toast(d.name + ' is on Trigger duty for ' + sel.dataset.label, 'success'); setTimeout(() => location.reload(), 900); })
+            .then((d) => { markWeek(sel, d.name); toast(d.name + ' is on Trigger duty for ' + sel.dataset.label, 'success'); refreshPage(900); })
             .catch((err) => { toast(err.message, 'error'); sel.disabled = false; sel.value = ''; });
     }));
     document.querySelectorAll('[data-withdraw]').forEach((b) => b.addEventListener('click', () => {
         if (!confirm('Give up your Trigger duty for ' + b.dataset.week + '? The week becomes open again.')) return;
         b.disabled = true;
         api('/api/lab_calendar/events/' + b.dataset.withdraw, 'DELETE')
-            .then(() => { toast('You are off duty for ' + b.dataset.week, 'info'); setTimeout(() => location.reload(), 900); })
+            .then(() => { markWeek(b, ''); toast('You are off duty for ' + b.dataset.week, 'info'); refreshPage(900); })
             .catch((err) => { toast(err.message, 'error'); b.disabled = false; });
     }));
     $('lcFormDelete').addEventListener('click', () => {
@@ -242,12 +271,12 @@
         const save = $('lcFormSave');
         save.disabled = true;
         api(id ? '/api/lab_calendar/events/' + id : '/api/lab_calendar/events', 'POST', body)
-            .then(() => { store.set('kinder-lc-month', body.date.slice(0, 7)); location.reload(); })
+            .then(() => { store.set('kinder-lc-month', body.date.slice(0, 7)); refreshPage(); })
             .catch((err) => { $('lcFormErr').textContent = err.message; $('lcFormErr').hidden = false; save.disabled = false; });
     });
     function removeEvent(e) {
         if (!confirm('Delete "' + e.title + '"' + (e.repeat ? ' and every occurrence of it' : '') + '?')) return;
-        api('/api/lab_calendar/events/' + e.db_id, 'DELETE').then(() => location.reload()).catch((err) => toast(err.message, 'error'));
+        api('/api/lab_calendar/events/' + e.db_id, 'DELETE').then(() => refreshPage()).catch((err) => toast(err.message, 'error'));
     }
 
     // ── month view ──
@@ -430,7 +459,7 @@
         syncBtn.disabled = true;
         syncBtn.textContent = 'Syncing…';
         api('/api/lab_calendar/sync', 'POST', {})
-            .then((d) => { toast('Lulin schedule synced: ' + d.added + ' new, ' + d.updated + ' changed, ' + d.removed + ' removed', 'success'); setTimeout(() => location.reload(), 900); })
+            .then((d) => { toast('Lulin schedule synced: ' + d.added + ' new, ' + d.updated + ' changed, ' + d.removed + ' removed', 'success'); refreshPage(900); })
             .catch((err) => { toast(err.message, 'error'); syncBtn.disabled = false; syncBtn.textContent = 'Sync now'; });
     });
 
