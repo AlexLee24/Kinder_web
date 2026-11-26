@@ -40,15 +40,15 @@
     .mt-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--kw-hairline); }
     .mt-head-selects { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
     .mt-head-selects select { max-width: 100%; }
-    .mt-page .controls h2 { margin: 0; color: var(--kw-text-white); font-size: 1rem; font-weight: 700; }
-    .mt-page .controls h3 { margin: 20px 0 10px 0; color: var(--kw-text-muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+    .mt-page .controls h2 { margin: 0; color: var(--kw-text-white); font-size: 1rem; font-weight: 600; }
+    .mt-page .controls h3 { margin: 20px 0 10px 0; color: var(--kw-text-muted); font-size: max(0.78rem, 11px); font-weight: 600; }
 
     .mt-page .input-group { margin-bottom: 10px; padding: 12px 14px; border-radius: var(--kw-radius-lg); background: var(--kw-card-bg-2); border: 1px solid var(--kw-hairline); }
     .mt-page label { display: block; margin-bottom: 6px; font-size: 0.8rem; color: var(--text-sub); }
     .mt-page input[type="range"] { width: 100%; margin: 5px 0; cursor: pointer; accent-color: var(--accent); height: 16px; touch-action: pan-y; -webkit-user-select: none; user-select: none; }
     .mt-page .list-container input[type="range"] { touch-action: pan-y; pointer-events: auto; }
     .mt-page .val-disp { float: right; color: var(--text-main); font-family: var(--kw-font-mono); font-size: 0.9rem; }
-    .mt-page .unit { color: var(--kw-text-muted); font-size: 0.75rem; margin-left: 2px; }
+    .mt-page .unit { color: var(--kw-text-muted); font-size: max(0.75rem, 11px); margin-left: 2px; }
 
     .mt-page button.add-btn { width: 100%; min-height: 34px; padding: 8px; background: rgba(255, 255, 255, 0.04); color: var(--text-main); border: 1px dashed var(--kw-border-med); border-radius: var(--kw-radius-md); font-size: 0.85rem; font-weight: 500; margin-top: 5px; cursor: pointer; transition: 0.2s; }
     .mt-page button.add-btn:hover { background: rgba(255, 255, 255, 0.08); border-color: var(--accent); color: var(--accent); }
@@ -59,7 +59,7 @@
     .mt-page .ota-box { border-left: 3px solid var(--ota-color); }
     .mt-page .item-row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
     .mt-page .item-col { flex: 1; min-width: 0; }
-    .mt-page .item-label { font-size: 0.75rem; color: var(--kw-text-muted); display: block; }
+    .mt-page .item-label { font-size: max(0.75rem, 11px); color: var(--kw-text-muted); display: block; }
     .mt-page .item-remove { position: absolute; top: 5px; right: 5px; min-height: 0; padding: 0; background: transparent; color: var(--kw-text-muted); border: none; font-size: 1rem; cursor: pointer; line-height: 1; }
     .mt-page .item-remove:hover { color: var(--danger); }
 
@@ -74,16 +74,16 @@
     }
     .mt-page .stat-row { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; color: var(--kw-text-secondary); }
     .mt-page .stat-val { font-family: var(--kw-font-mono); font-weight: 600; color: #fff; }
-    .mt-page .stat-sub { font-size: 0.75rem; color: var(--kw-text-muted); }
+    .mt-page .stat-sub { font-size: max(0.75rem, 11px); color: var(--kw-text-muted); }
     .mt-page .stat-div { height: 1px; background: var(--kw-hairline); margin: 10px 0; }
 
-    .mt-page .badge { padding: 4px 8px; border-radius: var(--kw-radius-sm); font-size: 0.75rem; font-weight: 700; text-align: center; margin-top: 8px; text-transform: uppercase; }
+    .mt-page .badge { padding: 4px 8px; border-radius: var(--kw-radius-sm); font-size: max(0.75rem, 11px); font-weight: 600; text-align: center; margin-top: 8px; }
     .mt-page .bg-ok { background: rgba(102, 187, 106, 0.15); color: #66bb6a; border: 1px solid #2e7d32; }
     .mt-page .bg-warn { background: rgba(255, 167, 38, 0.15); color: #ffa726; border: 1px solid #ef6c00; }
     .mt-page .bg-err { background: rgba(239, 83, 80, 0.15); color: #ef5350; border: 1px solid #c62828; }
     .mt-page .bg-info { background: rgba(41, 182, 246, 0.15); color: #29b6f6; border: 1px solid #0288d1; }
 
-    .mt-page .advice-box { margin-top: 10px; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: var(--kw-radius-sm); border-left: 3px solid var(--kw-border-med); font-size: 0.75rem; line-height: 1.4; color: var(--kw-text-secondary); }
+    .mt-page .advice-box { margin-top: 10px; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: var(--kw-radius-sm); border-left: 3px solid var(--kw-border-med); font-size: max(0.75rem, 11px); line-height: 1.4; color: var(--kw-text-secondary); }
 
     .mt-page .controls-overlay { position: absolute; bottom: 15px; left: 15px; display: flex; gap: 10px; }
     .mt-page .btn-overlay { min-height: 32px; background: rgba(14, 14, 18, 0.8); color: var(--kw-text-primary); border: 1px solid var(--kw-border-med); padding: 6px 12px; border-radius: var(--kw-radius-pill); font-size: 0.8rem; font-weight: 500; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); cursor: pointer; }
@@ -92,7 +92,7 @@
 
     /* Torque chart (the curve keeps its own colours) */
     .mt-page .chart-container { position: absolute; bottom: 60px; left: 15px; width: 280px; height: 160px; background: rgba(14, 14, 18, 0.92); border-radius: var(--kw-radius-md); border: 1px solid var(--kw-border); padding: 10px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-sizing: border-box; }
-    .mt-page .chart-title { font-size: 0.7rem; color: var(--kw-text-secondary); font-weight: 600; margin-bottom: 5px; }
+    .mt-page .chart-title { font-size: max(0.7rem, 11px); color: var(--kw-text-secondary); font-weight: 600; margin-bottom: 5px; }
     .mt-page #torqueChart { width: 100%; height: 120px; }
 
     /* OTA height mini viz */
@@ -103,7 +103,7 @@
     .mt-page .ota-height-post { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; width: 2px; background: rgba(255,255,255,0.25); border-radius: 2px; }
     .mt-page .ota-height-dot { position: absolute; left: 50%; transform: translate(-50%, 50%); width: 6px; height: 6px; border-radius: 50%; background: var(--ota-color); box-shadow: 0 0 0 2px rgba(171,71,188,0.15); }
 
-    /* Phones: the controls can fold away (☰ Controls) */
+    /* Phones: the controls can fold away (Controls button) */
     .mt-page .mobile-controls-toggle { position: absolute; top: 15px; left: 15px; z-index: 20; display: none; }
     @media (max-width: 899px) {
         .mt-page .mobile-controls-toggle { display: block; }
@@ -113,10 +113,10 @@
     @media (max-width: 600px) {
         /* small screens: compact overlays so the stats, chart and RA slider don't cover each other */
         .mt-page .display-container { height: max(620px, 76vh); }
-        .mt-page #stats { width: 196px; padding: 10px 12px; font-size: 0.72rem; }
+        .mt-page #stats { width: 196px; padding: 10px 12px; font-size: max(0.72rem, 11px); }
         .mt-page .stat-row { margin-bottom: 3px; }
-        .mt-page .badge { margin-top: 4px; padding: 3px 6px; font-size: 0.68rem; }
-        .mt-page .advice-box { margin-top: 6px; padding: 6px; font-size: 0.68rem; }
+        .mt-page .badge { margin-top: 4px; padding: 3px 6px; font-size: max(0.68rem, 11px); }
+        .mt-page .advice-box { margin-top: 6px; padding: 6px; font-size: max(0.68rem, 11px); }
         .mt-page .chart-container { bottom: 70px; width: min(200px, calc(100% - 30px)); height: 130px; padding: 8px; }
         .mt-page #torqueChart { height: 96px; }
         .mt-page .slider-overlay { width: 130px; }
@@ -137,7 +137,7 @@
     <div class="main-wrapper">
     <div class="controls kw-panel">
         <div class="mt-head">
-            <h2 style="margin:0;" data-lang="title">Harmonic Physics <span style="font-size:0.6em; color:var(--kw-text-faint);">v6.0</span></h2>
+            <h2 style="margin:0;" data-lang="title">Harmonic Physics <span style="font-size:max(0.6em, 11px); color:var(--kw-text-faint);">v6.0</span></h2>
             <div class="mt-head-selects">
                 <select id="langSelect" class="kw-select kw-select-sm">
                     <option value="en">English</option>
@@ -187,7 +187,7 @@
             <div id="cwList" class="list-container"></div>
             <button id="addCwBtn" class="add-btn" style="color:var(--warning); border-color:var(--warning);" data-lang="btn.addCW">+ Add Counterweight</button>
             <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
-                <span style="font-size:0.7rem; color:var(--kw-text-muted); width:100%;">Vixen Quick Add:</span>
+                <span style="font-size:max(0.7rem, 11px); color:var(--kw-text-muted); width:100%;">Vixen Quick Add:</span>
                 <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(1)">1kg</button>
                 <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(1.9)">1.9kg</button>
                 <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(2.8)">2.8kg</button>
@@ -202,19 +202,19 @@
         <canvas id="simCanvas"></canvas>
         
         <div id="stats">
-            <div class="stat-row" style="color:var(--kw-text-white); font-weight:700;" data-lang="stats.torque">TORQUE DYNAMICS</div>
+            <div class="stat-row" style="color:var(--kw-text-white); font-weight:600;" data-lang="stats.torque">Torque dynamics</div>
             <div class="stat-row"><span data-lang="stats.instant">Instant Load:</span> <span class="stat-val" id="t_inst" style="color:#fff;">0.0</span> <span class="unit">Nm</span></div>
             <div class="stat-row"><span data-lang="stats.peak">Peak (Horizontal):</span> <span class="stat-val" id="t_net">0.0</span> <span class="unit">Nm</span></div>
             <div class="stat-row"><span data-lang="stats.peakPct">Peak Load %:</span> <span class="stat-val" id="load_pct">0%</span></div>
             <div id="statusT" class="badge bg-ok">NORMAL</div>
 
             <div class="stat-div"></div>
-            <div class="stat-row" style="color:var(--kw-text-white); font-weight:700;" data-lang="stats.cm">CENTER OF MASS (CM)</div>
+            <div class="stat-row" style="color:var(--kw-text-white); font-weight:600;" data-lang="stats.cm">Center of mass (CM)</div>
             <div class="stat-row"><span data-lang="stats.cmOffset">CM Offset (Radius):</span> <span class="stat-val" id="cm_rad">0.0</span> <span class="unit">cm</span></div>
             <div class="stat-row"><span data-lang="stats.inertia">Inertia Total:</span> <span class="stat-val" id="i_total">0.0</span> <span class="unit">kgm²</span></div>
             
             <div class="stat-div"></div>
-            <div class="stat-row" style="color:var(--kw-text-white); font-weight:700;" data-lang="stats.weight">WEIGHT LIMITS</div>
+            <div class="stat-row" style="color:var(--kw-text-white); font-weight:600;" data-lang="stats.weight">Weight limits</div>
             <div class="stat-row"><span data-lang="stats.otaPayload">OTA Payload:</span> <span class="stat-val" id="ota_weight">0.0</span> / <span id="ota_limit">13</span> <span class="unit">kg</span></div>
             <div id="statusOTA" class="badge bg-ok" style="display:inline-block; margin-right:5px;">OK</div>
             <div class="stat-row" style="margin-top:5px;"><span data-lang="stats.sysTotal">System Total:</span> <span class="stat-val" id="sys_weight">0.0</span> / <span id="sys_limit">25</span> <span class="unit">kg</span></div>
@@ -228,7 +228,7 @@
         </div>
 
         <div class="mobile-controls-toggle">
-            <button id="toggleControlsBtn" class="btn-overlay" onclick="toggleControls()" data-lang="btn.controls">☰ Controls</button>
+            <button id="toggleControlsBtn" class="btn-overlay" onclick="toggleControls()"><svg class="kw-ic-i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg> <span id="toggleControlsLbl" data-lang="btn.controls">Controls</span></button>
         </div>
 
         <div class="chart-container">
@@ -270,16 +270,16 @@
             'btn.addTelescope': "+ Add Telescope",
             'btn.addCW': "+ Add Counterweight",
             'btn.resetView': "⟲ Reset View",
-            'btn.controls': "☰ Controls",
-            'chart.title': "TORQUE vs RA ANGLE",
-            'stats.torque': "TORQUE DYNAMICS",
+            'btn.controls': "Controls",
+            'chart.title': "Torque vs RA angle",
+            'stats.torque': "Torque dynamics",
             'stats.instant': "Instant Load:",
             'stats.peak': "Peak (Horizontal):",
             'stats.peakPct': "Peak Load %:",
-            'stats.cm': "CENTER OF MASS (CM)",
+            'stats.cm': "Center of mass (CM)",
             'stats.cmOffset': "CM Offset (Radius):",
             'stats.inertia': "Inertia Total:",
-            'stats.weight': "WEIGHT LIMITS",
+            'stats.weight': "Weight limits",
             'stats.otaPayload': "OTA Payload:",
             'stats.sysTotal': "System Total:",
             'item.mass': "Mass (kg)",
@@ -288,14 +288,14 @@
             'item.weight': "Weight (kg)",
             'item.height': "Height (cm)",
             'item.telescope': "Telescope",
-            'status.normal': "NORMAL",
-            'status.optimal': "OPTIMAL",
-            'status.overload': "OVERLOAD",
-            'status.tooHeavy': "TOO HEAVY",
-            'status.tooLight': "TOO LIGHT",
-            'status.heavyLoad': "HEAVY LOAD",
-            'btn.showControls': "☰ Show Controls",
-            'btn.hideControls': "☰ Hide Controls",
+            'status.normal': "Normal",
+            'status.optimal': "Optimal",
+            'status.overload': "Overload",
+            'status.tooHeavy': "Too heavy",
+            'status.tooLight': "Too light",
+            'status.heavyLoad': "Heavy load",
+            'btn.showControls': "Show Controls",
+            'btn.hideControls': "Hide Controls",
             'advice.otaOverload': ICONS.warning + " OTA Payload ({ota}kg) exceeds limit ({limit}kg)! Remove {diff}kg from telescope setup.",
             'advice.sysOverload': ICONS.warning + " System total ({total}kg) exceeds structural limit ({limit}kg)! Reduce overall weight by {diff}kg.",
             'advice.danger': ICONS.warning + " DANGER: Torque exceeds motor limit. Reduce payload or re-balance immediately.",
@@ -322,7 +322,7 @@
             'btn.addTelescope': "+ 新增望遠鏡",
             'btn.addCW': "+ 新增配重",
             'btn.resetView': "⟲ 重設視角",
-            'btn.controls': "☰ 控制面板",
+            'btn.controls': "控制面板",
             'chart.title': "扭矩 vs RA 角度",
             'stats.torque': "扭矩動態",
             'stats.instant': "瞬時負載:",
@@ -346,8 +346,8 @@
             'status.tooHeavy': "過重",
             'status.tooLight': "過輕",
             'status.heavyLoad': "重負載",
-            'btn.showControls': "☰ 顯示控制",
-            'btn.hideControls': "☰ 隱藏控制",
+            'btn.showControls': "顯示控制",
+            'btn.hideControls': "隱藏控制",
             'advice.otaOverload': ICONS.warning + " OTA 負載 ({ota}kg) 超過限制 ({limit}kg)！請減少 {diff}kg 的望遠鏡設備。",
             'advice.sysOverload': ICONS.warning + " 系統總重 ({total}kg) 超過結構限制 ({limit}kg)！請減少 {diff}kg 的總重量。",
             'advice.danger': ICONS.warning + " 危險：扭矩超過馬達限制。請立即減少負載或重新平衡。",
@@ -719,13 +719,13 @@
         
         // OTA Payload status
         ui.st_ota.className = "badge";
-        if(otaPayloadPct > 100) { ui.st_ota.classList.add('bg-err'); ui.st_ota.innerText="OVERLOAD"; }
+        if(otaPayloadPct > 100) { ui.st_ota.classList.add('bg-err'); ui.st_ota.innerText="Overload"; }
         else if(otaPayloadPct > 80) { ui.st_ota.classList.add('bg-warn'); ui.st_ota.innerText=`${otaPayloadPct.toFixed(0)}%`; }
         else { ui.st_ota.classList.add('bg-ok'); ui.st_ota.innerText=`${otaPayloadPct.toFixed(0)}%`; }
         
         // System Total status
         ui.st_sys.className = "badge";
-        if(sysTotalPct > 100) { ui.st_sys.classList.add('bg-err'); ui.st_sys.innerText="OVERLOAD"; }
+        if(sysTotalPct > 100) { ui.st_sys.classList.add('bg-err'); ui.st_sys.innerText="Overload"; }
         else if(sysTotalPct > 80) { ui.st_sys.classList.add('bg-warn'); ui.st_sys.innerText=`${sysTotalPct.toFixed(0)}%`; }
         else { ui.st_sys.classList.add('bg-ok'); ui.st_sys.innerText=`${sysTotalPct.toFixed(0)}%`; }
 
@@ -1030,7 +1030,7 @@
     // Mobile controls collapse/expand
     window.toggleControls = () => {
         document.body.classList.toggle('controls-collapsed');
-        const btn = document.getElementById('toggleControlsBtn');
+        const btn = document.getElementById('toggleControlsLbl');
         const isCollapsed = document.body.classList.contains('controls-collapsed');
         if(btn) btn.textContent = translations[currentLang][isCollapsed ? 'btn.showControls' : 'btn.hideControls'];
         window.onresize();

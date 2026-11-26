@@ -6,7 +6,7 @@
 
 .section-hint {
     margin: 0 0 10px;
-    font-size: 0.76rem;
+    font-size: max(0.76rem, 11px);
     font-style: italic;
     color: var(--kw-text-muted);
 }
@@ -66,7 +66,7 @@
 .fc-page .form-group label {
     display: block;
     margin-bottom: 6px;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: var(--kw-text-secondary);
 }
 
@@ -127,7 +127,7 @@
     background: var(--kw-card-bg-2);
     border: 1px solid var(--kw-hairline);
     font-family: var(--kw-font-mono);
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     color: var(--kw-text-secondary);
 }
 
@@ -215,7 +215,7 @@
     padding: 8px 12px 8px 18px;
     border-bottom: 1px solid var(--kw-hairline);
     font-size: 0.86rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--kw-text-white);
 }
 
@@ -328,12 +328,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.db-dd-meta { font-size: 0.75rem; color: rgba(255,255,255,0.4); white-space: nowrap; }
-.db-dd-add { flex-shrink: 0; font-size: 0.75rem; color: var(--kw-accent); opacity: 0.8; }
+.db-dd-meta { font-size: max(0.75rem, 11px); color: rgba(255,255,255,0.4); white-space: nowrap; }
+.db-dd-add { flex-shrink: 0; font-size: max(0.75rem, 11px); color: var(--kw-accent); opacity: 0.8; }
 .db-dd-internal {
     flex-basis: 100%;
     margin-top: -4px;
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     font-style: italic;
     color: rgba(255, 165, 77, 0.7);
     white-space: nowrap;

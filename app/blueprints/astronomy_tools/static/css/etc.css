@@ -201,7 +201,6 @@
     color: var(--etc-text-muted);
     font: inherit;
     font-size: 11px;
-    letter-spacing: 0.04em;
     cursor: pointer;
     transition: color 0.15s ease, border-color 0.15s ease;
 }
@@ -243,7 +242,7 @@
     margin: 0 0 8px;
     color: var(--kw-text-white, #FFFFFF);
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     line-height: normal;
 }
 .castor-etc .etc-tabpanel .etc-section-title:not(:first-child) { margin-top: var(--etc-field-space); }
@@ -265,7 +264,7 @@
     display: block;
     margin-bottom: var(--etc-label-gap);
     color: var(--kw-text-secondary, rgba(245, 245, 247, 0.72));
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     line-height: normal;
 }
 /* A label that shares its line with a small control acting on the same field.
@@ -616,8 +615,7 @@
     /* The section titles' size and weight, in the muted colour. */
     color: var(--etc-text-muted);
     font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
+    font-weight: 600;
 }
 .castor-etc .is-idle > .etc-beaver,
 .castor-etc .is-busy > .etc-beaver { display: flex; }
@@ -641,13 +639,13 @@
 .castor-etc .etc-hero-label {
     color: var(--etc-text-muted);
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
 }
 .castor-etc .etc-hero-value {
     margin: 4px 0;
     color: var(--etc-accent);
     font-size: 56px;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.1;
     overflow-wrap: anywhere;
 }
@@ -686,7 +684,7 @@
     margin-top: 4px;
     color: var(--etc-text-main);
     font-size: 18px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 /* Section titles inside the results column are direct flex children, so the
@@ -745,7 +743,7 @@
     margin: 0 0 4px;
     color: var(--etc-accent);
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
 }
 .castor-etc .etc-dialog-hint {
     margin: 0 0 var(--etc-gap-field);

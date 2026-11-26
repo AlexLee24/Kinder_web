@@ -62,7 +62,7 @@
 }
 
 .text-muted {
-    font-size: 0.76rem;
+    font-size: max(0.76rem, 11px);
     font-style: italic;
     color: var(--kw-text-muted);
 }

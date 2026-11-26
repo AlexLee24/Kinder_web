@@ -1351,7 +1351,7 @@ async function _doShare() {
         const url = `${location.origin}/lc_plotter/shared/${id}`;
         try { await navigator.clipboard.writeText(url); } catch (_) {}
         window.open(url, '_blank', 'noopener,noreferrer');
-        showToast('Link copied & opened!', 'ok');
+        showToast('Link copied & opened', 'ok');
     } catch (e) {
         showToast('Share failed: ' + e.message, 'error');
     }
