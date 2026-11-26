@@ -13,10 +13,16 @@
 {% endblock %}
 
 {% block content %}
-<div class="kw-page sp-page ls-page" id="lsPage">
+<div class="kw-page sp-page ls-page" id="lsPage" data-tab="lens">
     <div class="kw-tool">
+        {#- phones only: the images stay pinned at the top and the controls come one group at a time -#}
+        <div class="kw-seg ls-tabs" role="tablist" aria-label="Controls">
+            <button type="button" class="kw-seg-item is-on" role="tab" aria-selected="true" data-tab="lens">Lens</button>
+            <button type="button" class="kw-seg-item" role="tab" aria-selected="false" data-tab="source">Source</button>
+            <button type="button" class="kw-seg-item" role="tab" aria-selected="false" data-tab="display">Display</button>
+        </div>
         <aside class="kw-tool-side">
-            <section class="kw-panel">
+            <section class="kw-panel" data-ls-tab="lens">
                 <div class="sp-hd">Preset</div>
                 <select class="kw-input" id="lsPreset" aria-label="Preset">
                     <option value="">Choose a system…</option>
@@ -24,7 +30,7 @@
                 <div class="sp-hint" id="lsPresetNote">Approximate parameters of real systems; every slider stays free.</div>
             </section>
 
-            <section class="kw-panel">
+            <section class="kw-panel" data-ls-tab="lens">
                 <div class="sp-hd">Lens</div>
                 <div class="kw-seg ls-seg" role="group" aria-label="Lens model">
                     <button type="button" class="kw-seg-item" data-model="sie">Galaxy / cluster (SIE)</button>
@@ -60,7 +66,7 @@
                     <input type="range" id="lsLight" min="0" max="1" step="0.01"></label>
             </section>
 
-            <section class="kw-panel">
+            <section class="kw-panel" data-ls-tab="source">
                 <div class="sp-hd">Source</div>
                 <div class="kw-seg ls-seg" role="group" aria-label="Source type">
                     <button type="button" class="kw-seg-item" data-src="galaxy">Galaxy</button>
@@ -89,7 +95,7 @@
                 <div class="sp-hint">Or drag the source in the source-plane panel.</div>
             </section>
 
-            <section class="kw-panel">
+            <section class="kw-panel" data-ls-tab="display">
                 <div class="sp-hd">Telescope <button type="button" class="sp-copy" id="lsReset">Reset</button></div>
                 <select class="kw-input" id="lsTel" aria-label="Telescope"></select>
                 <label class="sp-field ls-obs">Band
@@ -106,7 +112,7 @@
                     zero point ≈ 24.3 + 5 log D (AB, 1 e⁻/s). Space telescopes: no seeing, zodiacal sky.</div>
             </section>
 
-            <section class="kw-panel">
+            <section class="kw-panel" data-ls-tab="display">
                 <div class="sp-hd">View</div>
                 <label class="sp-field">Field of view
                     <select class="kw-input" id="lsFov">
@@ -134,12 +140,12 @@
             <div class="ls-panels">
                 <figure class="ls-fig">
                     <canvas id="lsSrc" width="420" height="420" aria-label="Source plane"></canvas>
-                    <figcaption>Source plane (unlensed) · <span class="ls-caus-key">caustics</span></figcaption>
+                    <figcaption>Source plane (unlensed)<span class="ls-key-sep"> · </span><span class="ls-caus-key">caustics</span></figcaption>
                     <div class="ls-scale" id="lsScaleS"><span></span></div>
                 </figure>
                 <figure class="ls-fig">
                     <canvas id="lsImg" width="420" height="420" aria-label="Lensed image"></canvas>
-                    <figcaption>Observed (lensed) · <span class="ls-crit-key">critical curves</span></figcaption>
+                    <figcaption>Observed (lensed)<span class="ls-key-sep"> · </span><span class="ls-crit-key">critical curves</span></figcaption>
                     <div class="ls-scale" id="lsScaleI"><span></span></div>
                 </figure>
             </div>
@@ -210,4 +216,18 @@
         </section>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // phone control tabs (Lens / Source / Display); on wider screens every group shows and the tabs are hidden
+    (function () {
+        const page = document.getElementById('lsPage');
+        const tabs = page.querySelectorAll('.ls-tabs [role="tab"]');
+        tabs.forEach((b) => b.addEventListener('click', () => {
+            page.dataset.tab = b.dataset.tab;
+            tabs.forEach((t) => { t.setAttribute('aria-selected', String(t === b)); t.classList.toggle('is-on', t === b); });
+        }));
+    })();
+</script>
 {% endblock %}

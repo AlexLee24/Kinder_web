@@ -74,3 +74,22 @@
 
 /* phones: inputs are 16px there (no iOS zoom), so the value box needs room for 4.94e+12 */
 @media (max-width: 860px) { .ls-num { width: 108px; } }
+
+/* Phones: source plane and lensed image side by side, pinned under the header, so every slider change shows at once;
+   the controls come one group at a time (Lens / Source / Display tabs); 3D, guide and chart follow */
+.ls-tabs { display: none; }
+@media (max-width: 760px) {
+    .ls-page .kw-tool { display: flex; flex-direction: column; gap: 12px; }
+    .ls-page .sp-main { display: contents; }
+    .ls-page .ls-panels { order: 0; position: sticky; z-index: 5; grid-template-columns: repeat(2, minmax(0, 1fr));
+        top: calc(var(--sh-gap) + var(--sh-safe-t) + var(--sh-bar-h) + 8px); box-shadow: 0 8px 16px rgba(0, 0, 0, 0.45); }
+    .ls-page .ls-fig figcaption { left: 6px; top: 5px; right: 6px; }
+    .ls-page .ls-caus-key, .ls-page .ls-crit-key, .ls-page .ls-key-sep { display: none; }
+    .ls-page .ls-tabs { order: 1; display: flex; width: 100%; }
+    .ls-page .ls-tabs .kw-seg-item { flex: 1; min-height: 40px; }
+    .ls-page .kw-tool > .kw-tool-side { order: 2; }
+    .ls-page .sp-main > :not(.ls-panels) { order: 3; }
+    #lsPage:not([data-tab="lens"]) [data-ls-tab="lens"],
+    #lsPage:not([data-tab="source"]) [data-ls-tab="source"],
+    #lsPage:not([data-tab="display"]) [data-ls-tab="display"] { display: none; }
+}
