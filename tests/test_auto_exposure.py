@@ -34,17 +34,20 @@ def _p(elapsed, exp=300, count=1):
     return {'status': 'ok', 'exp': exp, 'count': count, 'elapsed': elapsed, 'snr': 20.0}
 
 
-def test_auto_takes_the_first_plan_within_the_limit(monkeypatch):
+def test_the_filters_picked_are_planned_however_long(monkeypatch):
     _fake(monkeypatch, {'Sloan_u': _p(2400), 'Sloan_g': _p(500), 'Sloan_r': _p(400), 'Sloan_i': _p(600), 'Sloan_z': _p(900)})
-    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=DET)
-    assert res['options']['all']['total_s'] == 4800 and res['chosen'] == 'gr' and not res['too_long']
-    assert [f['filter'] for f in res['plan']] == ['gp', 'rp']
+    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=DET)                     # default: all five
+    assert res['selected'] == list(ae.ALL) and res['total_s'] == 4800 and res['too_long'] and len(res['plan']) == 5
+    assert res['options']['gr']['total_s'] == 900 and res['options']['r']['total_s'] == 400
+    res = ae.compute('AT2026afqt', 47.9, -2.0, choice='zp,gp', detections=DET)
+    assert [f['filter'] for f in res['plan']] == ['gp', 'zp'] and res['total_s'] == 1400 and not res['too_long']
 
 
-def test_a_pinned_plan_is_kept_however_long(monkeypatch):
-    _fake(monkeypatch, {'Sloan_u': _p(2400), 'Sloan_g': _p(500), 'Sloan_r': _p(400), 'Sloan_i': _p(600), 'Sloan_z': _p(900)})
-    res = ae.compute('AT2026afqt', 47.9, -2.0, choice='all', detections=DET)
-    assert res['chosen'] == 'all' and res['too_long'] and len(res['plan']) == 5
+def test_selection_reads_lists_and_the_old_plan_names():
+    assert ae.selection('rp, up') == ['up', 'rp']
+    assert ae.selection(['ip']) == ['ip']
+    assert ae.selection('gr') == ['gp', 'rp'] and ae.selection('auto') == list(ae.ALL)
+    assert ae.selection('') == list(ae.ALL) and ae.selection('xx') == list(ae.ALL)
 
 
 def test_a_filter_castor_cannot_plan_is_left_out_with_why(monkeypatch):
@@ -77,7 +80,16 @@ def test_target_form_without_magnitude_cannot_use_auto(monkeypatch):
     from app.blueprints.private_area import targets
     monkeypatch.setattr(ae, 'latest_detections', lambda name: {})
     auto, snr, choice, res, err = targets._auto_exposure(
-        {'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00', 'mag': '', 'auto_exposure': True, 'auto_snr': 15}, 'SLT')
-    assert auto and snr == 15 and res is None and 'enter its magnitude' in err
+        {'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00', 'mag': '', 'auto_exposure': True, 'auto_snr': 15,
+         'auto_plan': 'rp,gp'}, 'SLT')
+    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'enter its magnitude' in err
     assert targets._auto_exposure({'auto_exposure': True, 'auto_snr': 1}, 'SLT')[4].startswith('Target S/N')
     assert targets._auto_exposure({'auto_exposure': True}, 'LOT')[0] is False
+
+
+@pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
+def test_the_shortest_frame_rule_never_saturates_a_bright_target():
+    when = datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc)
+    for mag in (9.0, 11.0, 12.5):
+        p = ae.plan_filter('Sloan_r', 47.9087, -2.0267, mag, 20, when)
+        assert p['exp'] is None or p['exp'] < p['sat_s'] * ae.SAT_MARGIN or p['exp'] <= 1, (mag, p)

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def _ensure_auto_exposure_column() -> None:
     """Add the auto exposure columns to obs.targets if not present (idempotent): auto_exposure, and for its CASTOR
-    plan (app/services/planning/auto_exposure.py) the target S/N, the plan chosen (auto / all / gr / r) and the
+    plan (app/services/planning/auto_exposure.py) the target S/N, the filters picked (e.g. up,gp,rp) and the
     last computed result."""
     try:
         with get_db_connection() as conn:
@@ -28,7 +28,7 @@ def _ensure_auto_exposure_column() -> None:
                 "ALTER TABLE obs.targets "
                 "ADD COLUMN IF NOT EXISTS auto_exposure BOOLEAN NOT NULL DEFAULT FALSE, "
                 "ADD COLUMN IF NOT EXISTS auto_snr DOUBLE PRECISION NOT NULL DEFAULT 20, "
-                "ADD COLUMN IF NOT EXISTS auto_plan TEXT NOT NULL DEFAULT 'auto', "
+                "ADD COLUMN IF NOT EXISTS auto_plan TEXT NOT NULL DEFAULT 'up,gp,rp,ip,zp', "
                 "ADD COLUMN IF NOT EXISTS auto_result JSONB"
             )
             conn.commit()
@@ -212,7 +212,7 @@ def save_observation_target(name: str, ra: float, dec: float,
                              created_by_email: str | None = None,
                              auto_exposure: bool = False,
                              auto_snr: float = 20,
-                             auto_plan: str = 'auto',
+                             auto_plan: str = 'up,gp,rp,ip,zp',
                              **legacy_kwargs) -> int | None:
     """Insert or update an observation target.  Returns target_id."""
     if legacy_kwargs.get('repeat_count') is not None:

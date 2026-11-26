@@ -8,8 +8,9 @@ Magnitudes: each filter its own latest detection on the target's Transient page;
 detection in any filter; a target with no detection at all, the magnitude typed on the target (no magnitude at all:
 no auto exposure).
 
-Plans: all five filters, g + r, or r only. 'auto' takes the first of those whose time at the telescope stays within
-MAX_TOTAL_S; a target can pin one (and then gets it however long it takes), or leave auto exposure for its own filters.
+Filters: the ones picked on the target (auto_plan, e.g. 'up,gp,rp,ip,zp'; default all five), however long they take;
+a plan over MAX_TOTAL_S is flagged, with what g + r or r alone would take. Every filter is computed, so the form can
+change the pick without asking CASTOR again.
 
 update_all() refreshes every SLT auto target (magnitude, plan, filters): daily at 12:00 UTC+8 and after the
 auto photometry bot has measured last night.
@@ -23,14 +24,14 @@ logger = logging.getLogger(__name__)
 
 # (script filter, band, CASTOR filter)
 BANDS = (('up', 'u', 'Sloan_u'), ('gp', 'g', 'Sloan_g'), ('rp', 'r', 'Sloan_r'), ('ip', 'i', 'Sloan_i'), ('zp', 'z', 'Sloan_z'))
-PLANS = {'all': ('up', 'gp', 'rp', 'ip', 'zp'), 'gr': ('gp', 'rp'), 'r': ('rp',)}
-PLAN_LABEL = {'all': 'u g r i z', 'gr': 'g + r', 'r': 'r only'}
-CHOICES = ('auto', 'all', 'gr', 'r')
+ALL = tuple(sf for sf, _, _ in BANDS)
+PLANS = {'all': ALL, 'gr': ('gp', 'rp'), 'r': ('rp',)}       # the shorter plans offered when the pick runs long
 DEFAULT_SNR = 20.0
-MAX_TOTAL_S = 30 * 60          # 'auto': the longest a plan may take at the telescope
+MAX_TOTAL_S = 30 * 60          # a plan longer than this at the telescope is flagged
 # Shortest frame: CASTOR would give a bright target 15 s frames, but a frame that short holds too few field stars
 # for AutoPhOT's zero point and template alignment (AT2026afqt z, 2026-11-25: 5 stars in 8')
 MIN_EXP_S = 60
+SAT_MARGIN = 0.7              # a frame at most 70% of CASTOR's saturation time for the target
 SITE, TELESCOPE, CAMERA = 'lulin', 'SLT', 'SLT_DZ936'      # the SLT camera since 2026-11-03
 LULIN = ('120:52:21.5', '23:28:10.0', 2800)
 TZ8 = timezone(timedelta(hours=8))
@@ -39,6 +40,17 @@ MIN_ALT_DEG = 20
 
 class NoMagnitude(ValueError):
     pass
+
+
+def selection(choice):
+    """The script filters picked for a target, in u g r i z order: 'up,rp' (or a list); the old plan names (auto,
+    all, gr, r) still read; nothing valid means all five."""
+    if isinstance(choice, str) and choice in PLANS:
+        return list(PLANS[choice])
+    items = choice.split(',') if isinstance(choice, str) else list(choice or [])
+    picked = {str(x).strip().lower() for x in items}
+    out = [sf for sf in ALL if sf in picked]
+    return out or list(ALL)
 
 
 def _band(f):
@@ -164,21 +176,28 @@ def plan_filter(castor_filter, ra, dec, mag, snr, when):
     rec, status = r.get('recommended'), r.get('status')
     if not rec:
         return {'status': status, 'exp': None, 'count': None, 'elapsed': None, 'snr': None}
-    if rec['exp_s'] < MIN_EXP_S and (r['conditions'].get('saturation_time_s') or 0) > MIN_EXP_S:
-        n = max(1, round(rec['total_s'] / MIN_EXP_S))
-        rec = plan.compute_snr(cat, **kw, single_exp_time=MIN_EXP_S, num_exposures=n)['chosen']
+    # longer frames than CASTOR's, up to MIN_EXP_S, but never into saturation: the target's peak pixel must stay below
+    # full well with SAT_MARGIN to spare (better seeing than the median 1.4" puts more light in the peak)
+    t_sat = float(r['conditions'].get('saturation_time_s') or 0)
+    # (CASTOR's own pick can sit just under saturation too: mag 11 in r, 15 s of a 17.4 s limit)
+    want = max(rec['exp_s'], MIN_EXP_S)
+    safe = [t for t in sorted(set(plan.SHORT_EXPOSURES) | set(plan.PREFERRED_EXPOSURES)) if t <= want and t < t_sat * SAT_MARGIN]
+    if safe and safe[-1] != rec['exp_s']:
+        t = safe[-1]
+        rec = plan.compute_snr(cat, **kw, single_exp_time=t, num_exposures=max(1, math.ceil(rec['total_s'] / t)))['chosen']
     return {'status': status, 'exp': int(rec['exp_s']), 'count': int(rec['frames']), 'elapsed': int(rec['elapsed_s']),
-            'snr': round(float(rec['snr']), 1)}
+            'snr': round(float(rec['snr']), 1), 'sat_s': round(t_sat, 1)}
 
 
 WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot reach the S/N (sky background)',
        'below_horizon': 'not above the horizon tonight'}
 
 
-def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice='auto', day=None, detections=None):
-    """The target's plan for tonight. Raises NoMagnitude when there is nothing to compute it from."""
+def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=None, detections=None):
+    """The target's plan for tonight for the filters picked (choice). Raises NoMagnitude when there is nothing to
+    compute it from."""
     snr = float(snr or DEFAULT_SNR)
-    choice = choice if choice in CHOICES else 'auto'
+    picked = selection(choice)
     mags = magnitudes(name, typed_mag, detections)
     when, alt = best_time(ra, dec, day)
     filters, notes = {}, []
@@ -191,16 +210,14 @@ def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice='auto', day=N
     for k, fs in PLANS.items():
         usable = [sf for sf in fs if filters[sf]['exp']]
         options[k] = {'total_s': sum(filters[sf]['elapsed'] for sf in usable), 'filters': usable}
-    if choice == 'auto':
-        chosen = next((k for k in ('all', 'gr', 'r') if options[k]['filters'] and options[k]['total_s'] <= MAX_TOTAL_S), 'r')
-    else:
-        chosen = choice
-    plan = [{'filter': sf, 'exp': filters[sf]['exp'], 'count': filters[sf]['count']} for sf in options[chosen]['filters']]
+    usable = [sf for sf in picked if filters[sf]['exp']]
+    plan = [{'filter': sf, 'exp': filters[sf]['exp'], 'count': filters[sf]['count']} for sf in usable]
+    total = sum(filters[sf]['elapsed'] for sf in usable)
     if alt < MIN_ALT_DEG:
         notes.append(f'highest tonight only {alt:.0f}°')
     return {'computed_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'night': (day or datetime.now(TZ8).date()).isoformat(),
-            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'choice': choice, 'chosen': chosen,
-            'filters': filters, 'options': options, 'plan': plan, 'too_long': options[chosen]['total_s'] > MAX_TOTAL_S,
+            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'selected': picked, 'total_s': total,
+            'filters': filters, 'options': options, 'plan': plan, 'too_long': total > MAX_TOTAL_S,
             'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes}
 
 
@@ -214,7 +231,7 @@ def apply(target, **kw):
     """Compute and store one target's plan (its filters follow it). Returns the result, or raises NoMagnitude."""
     from app.db.obs import set_auto_exposure_result
     res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or DEFAULT_SNR,
-                  target.get('auto_plan') or 'auto', **kw)
+                  target.get('auto_plan'), **kw)
     set_auto_exposure_result(target['id'], res, filters=res['plan'] or None, mag=latest_mag(res))
     return res
 

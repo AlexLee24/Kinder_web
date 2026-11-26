@@ -44,7 +44,7 @@ def _auto_exposure(data, telescope):
         snr = 0
     if not 3 <= snr <= 500:
         return auto, None, None, None, 'Target S/N must be a number between 3 and 500.'
-    choice = data.get('auto_plan') if data.get('auto_plan') in ae.CHOICES else 'auto'
+    choice = ','.join(ae.selection(data.get('auto_plan')))
     if not auto:
         return False, snr, choice, None, None
     try:
