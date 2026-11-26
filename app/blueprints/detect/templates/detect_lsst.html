@@ -16,11 +16,11 @@
         .lsst-state b.running { color: var(--kw-accent); }
         .lsst-state b.error, .lsst-state b.interrupted { color: #FF6B61; }
         .lsst-log { margin: 10px 0 0; max-height: 240px; overflow: auto; padding: 10px 12px; border-radius: 10px;
-                    background: rgba(0, 0, 0, 0.35); border: 1px solid var(--kw-border); font: 0.74rem/1.5 var(--kw-font-mono, ui-monospace, monospace);
+                    background: rgba(0, 0, 0, 0.35); border: 1px solid var(--kw-border); font: max(0.74rem, 11px)/1.5 var(--kw-font-mono, ui-monospace, monospace);
                     color: var(--kw-text-secondary); white-space: pre-wrap; }
         .lsst-msg { font-size: 0.8rem; margin-top: 8px; color: var(--kw-text-secondary); }
         .lsst-msg.err { color: #FF6B61; }
-        .lsst-tools .lsst-check { display: flex; gap: 6px; align-items: center; font-size: 0.78rem; color: var(--kw-text-secondary); margin-top: 8px; }
+        .lsst-tools .lsst-check { display: flex; gap: 6px; align-items: center; font-size: max(0.78rem, 11px); color: var(--kw-text-secondary); margin-top: 8px; }
         .lsst-note { margin-bottom: 16px; }
         @media (max-width: 960px) { .lsst-tools { grid-template-columns: minmax(0, 1fr); } }
     </style>
@@ -29,8 +29,8 @@
 {% block lead %}
         <p class="kw-lead lead">
             <strong>DETECT on LSST alerts.</strong> Every LSST alert ALeRCE puts near a lens or a DESI galaxy is screened
-            by DETECT exactly as a TNS report is: <em>is it in a galaxy with a known redshift, how luminous is it,
-            and is it worth a large-telescope spectrum?</em> Alerts without a DESI or Lens candidate are left out.
+            by DETECT exactly as a TNS report is: is it in a galaxy with a known redshift, how luminous is it,
+            and is it worth a large-telescope spectrum? Alerts without a DESI or Lens candidate are left out.
             The rest is handed to a person on the
             <a href="{{ day_url ~ latest_date if latest_date else '#' }}">review page</a>.
         </p>

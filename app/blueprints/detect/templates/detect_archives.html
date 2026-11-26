@@ -44,7 +44,7 @@
                data-date="{{ item.date }}"
                {% if item.count == 0 %}onclick="alert('No targets matched on this day.'); return false;"{% endif %}>
                 <span class="date">{{ item.date }}</span>
-                <span class="count">{{ item.count }} targets</span>
+                <span class="count">{{ item.count }} target{{ "s" if item.count != 1 }}</span>
                 {{ day_badges(item, small=true) }}
             </a>
             {% endfor %}
