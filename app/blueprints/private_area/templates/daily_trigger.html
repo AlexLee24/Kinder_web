@@ -826,125 +826,102 @@
     <!-- New Target Modal -->
     <div id="targetModal" class="pa-modal-overlay">
         <div class="pa-modal-box pa-target-box">
-            <h3 id="target-modal-title">New Target</h3>
+            <!-- one screen, no scrolling: target | exposure plan | the target tonight -->
+            <div class="pa-tw-head">
+                <h3 id="target-modal-title">New Target</h3>
+                <button type="button" class="pa-tw-close" onclick="closeTargetModal()" aria-label="Close">&times;</button>
+            </div>
             <div class="pa-target-grid">
 
-            <form id="add-target-form" onsubmit="addObservationTarget(event)">
-                <!-- Row 1: Target Name / Magnitude -->
-                <div class="pa-form-row two-col" style="grid-template-columns: 3fr 1fr;">
-                    <div style="position: relative;">
-                        <input type="text" id="obs-name" required placeholder="Target Name" autocomplete="off" oninput="searchTarget(this.value); checkTargetNameHint(this.value)" class="pa-input">
+            <form id="add-target-form" class="pa-tw-form" onsubmit="addObservationTarget(event)">
+                <!-- column 1: the target -->
+                <section class="pa-tw-col pa-tw-target" aria-label="Target">
+                    <div class="pa-tw-label">Target
+                        <span class="pa-tw-info" tabindex="0" title="Use the TNS / IAU name (AT / SN prefix) or the EP/EPt name. Database search only works with the SN/AT prefix, or LSST-&lt;oid&gt; for an LSST object on DETECT › LSST that is not in TNS yet. For other names, enter manually and give coordinates. Avoid survey IDs like ZTF, ATLAS, PS.">i</span>
+                    </div>
+                    <div class="pa-tw-name">
+                        <input type="text" id="obs-name" required placeholder="Name (SN / AT / EP / LSST-…)" autocomplete="off" oninput="searchTarget(this.value); checkTargetNameHint(this.value)" class="pa-input">
                         <div id="search-results-dropdown" class="pa-search-dropdown"></div>
                         <div id="obs-name-hint" class="pa-name-hint"></div>
                     </div>
-                    <div>
-                        <input type="text" id="obs-mag" oninput="checkAutoConstraints()" placeholder="Newest Mag" class="pa-input">
-                    </div>
-                </div>
-                <div class="pa-name-reminder">
-                    Use <strong>TNS / IAU name</strong> (AT&nbsp;/&nbsp;SN prefix) or <strong>EP/EPt name</strong> — Database search only works with <strong>SN/AT</strong> prefix, or <strong>LSST-&lt;oid&gt;</strong> for an LSST object on DETECT › LSST that is not in TNS yet. For other names, enter manually and provide coordinates. Avoid survey IDs like ZTF, ATLAS, PS, etc.
-                </div>
-                
-
-                    <!-- scroll-to-top button removed from modal; injected globally at end of body -->
-                <!-- Row 2: RA / Dec -->
-                <div class="pa-form-row two-col">
-                    <div>
+                    <!-- the target's magnitude is kept (search pick, edit, daily update) but not typed here: Auto Exposure's
+                         MAG column takes magnitudes per filter -->
+                    <input type="hidden" id="obs-mag">
+                    <div class="pa-tw-pair">
                         <input type="text" id="obs-ra" required placeholder="RA (h:m:s or deg)" class="pa-input">
-                    </div>
-                    <div>
                         <input type="text" id="obs-dec" required placeholder="Dec (d:m:s or deg)" class="pa-input">
                     </div>
-                </div>
-                
-                <!-- Row 3: Priority / Repeat -->
-                <div class="pa-form-row priority-row">
-                    <div class="pa-field">
-                        <span class="pa-field-label">Priority</span>
-                        <select id="obs-priority">
-                            <option value="Normal">Normal</option>
-                            <option value="High">High</option>
-                            <option value="Urgent">Urgent</option>
-                        </select>
-                    </div>
-                    <div class="pa-field">
-                        <span class="pa-field-label">Repeat</span>
-                        <input type="number" id="obs-count" value="0" min="0">
-                    </div>
-                </div>
-
-                <!-- Hidden Selected Telescope state -->
-                <input type="hidden" id="obs-telescope" value="SLT">
-
-                <!-- Row 4: LOT Program (conditional) -->
-                <div id="lot-programs-container" class="pa-lot-program">
-                    <div class="pa-field">
-                        <span class="pa-field-label">Program (LOT)</span>
-                        <input type="text" id="obs-program" placeholder="e.g. R01">
-                    </div>
-                </div>
-
-                <!-- Auto exposure button -->
-                <div id="slt-auto-exp-container" class="pa-auto-exp-container">
-                    <div class="pa-auto-exp-row">
-                        <button type="button" id="btn-auto-exp" onclick="applyAutoExposure()" class="pa-btn-auto-exp">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                            <span id="btn-auto-exp-label">Auto Exposure</span>
-                        </button>
-                        <label class="pa-auto-snr" for="obs-auto-snr">Target S/N
-                            <input type="number" id="obs-auto-snr" value="" min="3" max="500" step="1" placeholder="Auto" onchange="onAutoSnrChange()">
+                    <div class="pa-tw-pair">
+                        <label class="pa-field"><span class="pa-field-label">Priority</span>
+                            <select id="obs-priority">
+                                <option value="Normal">Normal</option>
+                                <option value="High">High</option>
+                                <option value="Urgent">Urgent</option>
+                            </select>
                         </label>
-                        <label class="pa-auto-snr" for="obs-auto-camera">Camera
-                            <select id="obs-auto-camera" onchange="onAutoCameraChange()"><option value="">Auto (last used)</option></select>
+                        <label class="pa-field"><span class="pa-field-label">Repeat</span>
+                            <input type="number" id="obs-count" value="0" min="0">
                         </label>
-                        <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
-                    </div>
-                    <p class="pa-auto-exp-help">CASTOR plans each filter for this S/N (blank: S/N 10 when the target's brightest magnitude is 19 or brighter, else 20) at the target's highest tonight, from its Kinder photometry: that filter's latest detection in the last 3 days, else the brightest of those 3 days in any filter; only with nothing in 3 days, older points (else the magnitude above). Updated every day after last night's photometry.</p>
-                    <div id="auto-exp-plan" class="pa-auto-plan" hidden></div>
-                </div>
-
-                <!-- Observation Configuration -->
-                <div class="pa-obs-config">
-                    <h4>Observation Configuration</h4>
-                    
-                    <div id="filter-rows-container" class="pa-filter-rows">
-                        <!-- JS generated rows -->
                     </div>
 
-                    <div class="pa-filter-actions">
-                        <button type="button" onclick="addFilterRow('rp')" class="pa-btn-link">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add Filter
-                        </button>
-                        <button type="button" onclick="addAllFilters(['up', 'gp', 'rp', 'ip', 'zp'])" class="pa-btn-link">
-                            add All ugriz
-                        </button>
+                    <!-- Hidden Selected Telescope state -->
+                    <input type="hidden" id="obs-telescope" value="SLT">
+
+                    <div id="lot-programs-container" class="pa-lot-program">
+                        <label class="pa-field"><span class="pa-field-label">Program (LOT)</span>
+                            <input type="text" id="obs-program" placeholder="e.g. R01">
+                        </label>
                     </div>
 
-                    <div id="total-exposure-container" class="pa-total-exposure">
-                        Total exposure: <span id="total-exposure-text"></span>
-                    </div>
-                </div>
-
-                <!-- Note -->
-                <div class="pa-note-field">
-                    <input type="text" id="obs-plan" placeholder="Note (required for Urgent priority)" class="pa-input">
-                </div>
-
-                <!-- Note GL -->
-                <div class="pa-note-field" style="margin-top: 10px;">
+                    <input type="text" id="obs-plan" placeholder="Note (required for Urgent)" class="pa-input">
                     <input type="text" id="obs-note-gl" placeholder="Note for GREATLab" class="pa-input">
-                </div>
 
-                <!-- Buttons -->
-                <div class="pa-modal-footer">
-                    <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
-                    <button type="submit" class="pa-btn-save">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        <span id="target-modal-submit-label">Save Target</span>
-                    </button>
-                </div>
+                    <div class="pa-modal-footer">
+                        <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
+                        <button type="submit" class="pa-btn-save">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            <span id="target-modal-submit-label">Save Target</span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- column 2: exposures -->
+                <section class="pa-tw-col pa-tw-exp" aria-label="Exposures">
+                    <div id="slt-auto-exp-container" class="pa-auto-exp-container">
+                        <div class="pa-auto-exp-row">
+                            <button type="button" id="btn-auto-exp" onclick="applyAutoExposure()" class="pa-btn-auto-exp">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                                <span id="btn-auto-exp-label">Auto Exposure</span>
+                            </button>
+                            <span class="pa-tw-info" tabindex="0" title="CASTOR plans each filter for this S/N (blank: S/N 10 when the target's brightest magnitude is 19 or brighter, else 20) at the target's highest tonight, from its Kinder photometry: that filter's latest detection in the last 3 days, else the brightest of those 3 days in any filter; only with nothing in 3 days, older points up to 30 days (else the magnitudes typed in the MAG column). Updated every day after last night's photometry.">i</span>
+                            <label class="pa-auto-snr" for="obs-auto-snr">S/N
+                                <input type="number" id="obs-auto-snr" value="" min="3" max="500" step="1" placeholder="Auto" onchange="onAutoSnrChange()">
+                            </label>
+                            <label class="pa-auto-snr" for="obs-auto-camera">Camera
+                                <select id="obs-auto-camera" onchange="onAutoCameraChange()"><option value="">Auto (last used)</option></select>
+                            </label>
+                        </div>
+                        <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
+                        <div id="auto-exp-plan" class="pa-auto-plan" hidden></div>
+                    </div>
+
+                    <div class="pa-obs-config">
+                        <div class="pa-tw-label">Exposures
+                            <span id="total-exposure-container" class="pa-total-exposure">Total <span id="total-exposure-text"></span></span>
+                        </div>
+                        <div id="filter-rows-container" class="pa-filter-rows">
+                            <!-- JS generated rows -->
+                        </div>
+                        <div class="pa-filter-actions">
+                            <button type="button" onclick="addFilterRow('rp')" class="pa-btn-link">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add filter
+                            </button>
+                            <button type="button" onclick="addAllFilters(['up', 'gp', 'rp', 'ip', 'zp'])" class="pa-btn-link">All ugriz</button>
+                        </div>
+                    </div>
+                </section>
             </form>
-            <!-- the target tonight: visibility, light curve, survey image (dt_auto.js previewTarget) -->
+            <!-- column 3: the target tonight: visibility, survey image, light curve (dt_auto.js previewTarget) -->
             <aside id="targetPreview" class="pa-target-preview" aria-label="The target tonight"></aside>
             </div>
         </div>

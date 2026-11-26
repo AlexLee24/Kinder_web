@@ -617,7 +617,6 @@
 
     // ── New / edit target window: the target tonight beside the form (visibility, light curve, survey image) ──
     let pvTimer = null, pvKey = null;
-    const LEGEND_STYLE = 'display:none; flex-wrap:wrap; gap:4px 6px; padding:8px 0 6px; max-height:108px; overflow-y:auto; border-top:1px solid rgba(255,255,255,0.06); margin-top:8px;';
     function clearPreview() { const b = $('targetPreview'); if (b) b.replaceChildren(); pvKey = null; }
     function schedulePreview(ms) { clearTimeout(pvTimer); pvTimer = setTimeout(previewTarget, ms == null ? 700 : ms); }
     function previewTarget() {
@@ -643,12 +642,13 @@
                     el('div', { class: 'pa-tp-vis', id: 'tpVis' }, el('p', { class: 'pa-tp-empty', text: ra && dec ? 'Computing…' : 'Enter RA and Dec' }))),
                 el('section', { class: 'pa-tp-sec', 'aria-label': 'Survey image' }, el('h4', { text: 'Survey, 60″' }),
                     el('div', { class: 'pa-tp-sky' }, (ra && dec && skyFig(t)) || el('p', { class: 'pa-tp-empty', text: '—' })))),
-            el('section', { class: 'pa-tp-sec', 'aria-label': 'Light curve' },
+            el('section', { class: 'pa-tp-sec pa-tp-lcsec', 'aria-label': 'Light curve' },
                 el('h4', {}, 'Light curve', name ? [' · ', el('a', { href: objUrl(name), target: '_blank', rel: 'noopener', text: 'Transient page' })] : null),
+                el('div', { class: 'pa-lcf', id: 'tpLcFilter' }),
                 el('div', { class: 'pa-tp-lc' },
-                    el('div', { id: 'telescopeToggles', style: 'display:none; flex-wrap:wrap; gap:6px; padding:0 0 10px;' }),
-                    el('div', { id: 'tpLcPlot' }, el('p', { class: 'pa-tp-empty', text: name ? 'Loading the light curve…' : '—' })),
-                    el('div', { id: 'photLegend', style: LEGEND_STYLE }))),
+                    // lcDraw fills these by id; the window shows its own band / source filter instead (pa-lcf)
+                    el('div', { id: 'telescopeToggles' }), el('div', { id: 'photLegend' }),
+                    el('div', { id: 'tpLcPlot' }, el('p', { class: 'pa-tp-empty', text: name ? 'Loading the light curve…' : '—' })))),
             );
         if (ra && dec) previewVis(t, key);
         if (name) previewLc(t, key);
@@ -686,8 +686,84 @@
         if (!box || pvKey !== key) return;
         const disc = _mjdFromDateString(d.disc);
         lcPhaseRefDefault = disc != null ? { mjd: disc, custom: false } : null;
-        try { lcDraw(box, d.plot, fig => lcAddPhaseAxis(fig, lcPhaseRefDefault, 'Phase (days since discovery)'), 340); }
+        const h = Math.max(220, Math.floor(box.getBoundingClientRect().height) || 340);
+        try { lcDraw(box, d.plot, fig => lcAddPhaseAxis(fig, lcPhaseRefDefault, 'Phase (days since discovery)'), h); lcFilter(); fitLc(box); }
         catch (e) { console.error('dt_auto: preview light curve', e); say('Could not draw the light curve'); }
+    }
+    // the plot fills what is left under the filter bar: no scrolling in the window
+    function fitLc(box) {
+        requestAnimationFrame(() => {
+            const plot = document.getElementById('phot-plotly-div');
+            if (!plot || !box.isConnected) return;
+            const extra = box.scrollHeight - plot.offsetHeight;
+            const h = Math.max(200, Math.floor(box.clientHeight - extra));
+            if (Math.abs(h - plot.offsetHeight) > 2) Plotly.relayout(plot, { height: h });
+        });
+    }
+    // The light curve's filter: a chip per band (all sources together), limits on/off, and the sources in a small menu.
+    // It drives lc_plot.js's own visibility state (_photTraceActive / _photTelActive → _applyPhotVis).
+    function lcFilter() {
+        const bar = $('tpLcFilter'), plot = document.getElementById('phot-plotly-div');
+        if (!bar || !plot || !plot.data) return;
+        const tr = plot.data.filter(x => x.name && x.showlegend !== false);
+        const parse = n => {
+            const lim = n.endsWith(' - Limit'), base = lim ? n.slice(0, -8).trimEnd() : n, i = base.lastIndexOf(' - ');
+            return { lim, band: i >= 0 ? base.slice(0, i) : base, tel: i >= 0 ? base.slice(i + 3) : '' };
+        };
+        const bands = new Map(), tels = [];
+        let anyLim = false;
+        tr.forEach(x => {
+            const p = parse(x.name);
+            if (p.lim) anyLim = true;
+            if (!bands.has(p.band) || (!p.lim && bands.get(p.band).lim)) bands.set(p.band, { color: (x.marker && x.marker.color) || '#888', lim: p.lim });
+            if (p.tel && !tels.includes(p.tel)) tels.push(p.tel);
+        });
+        if (!tr.length) { bar.replaceChildren(); return; }
+        const ORDER = 'uUBgVcGroRwiIzyJHK';
+        const bandList = [...bands.keys()].sort((a, b) => (ORDER.indexOf(a[0]) + 99) % 99 - (ORDER.indexOf(b[0]) + 99) % 99 || a.localeCompare(b));
+        tels.sort();
+        const on = { bands: new Set(bandList), tels: new Set(tels), lim: true };
+        const apply = () => {
+            _photTraceActive = new Set(tr.map(x => x.name).filter(n => { const p = parse(n); return on.bands.has(p.band) && (on.lim || !p.lim); }));
+            _photTelActive = new Set(on.tels);
+            _applyPhotVis();
+            bar.querySelectorAll('[data-band]').forEach(b => b.setAttribute('aria-pressed', on.bands.has(b.dataset.band)));
+            const lim = bar.querySelector('[data-lim]'); if (lim) lim.setAttribute('aria-pressed', on.lim);
+            bar.querySelectorAll('[data-tel]').forEach(c => { c.checked = on.tels.has(c.dataset.tel); });
+            const sum = bar.querySelector('.pa-lcf-src > summary');
+            if (sum) sum.lastChild.textContent = on.tels.size === tels.length ? 'All sources' : `${on.tels.size} of ${tels.length} sources`;
+        };
+        const flip = (set, k) => { set.has(k) ? set.delete(k) : set.add(k); apply(); };
+        const chip = (label, color, attrs, onclick) => {
+            const b = el('button', { type: 'button', class: 'pa-lcf-chip', style: `--c:${color}`, ...attrs }, el('i'), label);
+            b.addEventListener('click', onclick);
+            // double-click: only this band
+            return b;
+        };
+        const kids = bandList.map(bd => {
+            const b = chip(bd, bands.get(bd).color, { 'data-band': bd, title: `${bd}: click to show / hide, double-click for only ${bd}` }, () => flip(on.bands, bd));
+            b.addEventListener('dblclick', () => { on.bands = new Set([bd]); apply(); });
+            return b;
+        });
+        if (anyLim) kids.push(el('span', { class: 'pa-lcf-sep' }),
+            chip('Limits', '#aaa', { 'data-lim': '1', title: 'Upper limits' }, () => { on.lim = !on.lim; apply(); }));
+        if (tels.length > 1) {
+            const menu = el('div', { class: 'pa-lcf-menu', style: `--rows:${Math.min(8, Math.ceil(tels.length / Math.ceil(tels.length / 8)))}` });
+            const all = el('div', { class: 'pa-lcf-all' },
+                el('button', { type: 'button', class: 'pa-btn-link', text: 'All' }), el('button', { type: 'button', class: 'pa-btn-link', text: 'None' }));
+            all.children[0].addEventListener('click', () => { on.tels = new Set(tels); apply(); });
+            all.children[1].addEventListener('click', () => { on.tels = new Set(); apply(); });
+            menu.append(all, ...tels.map(tl => {
+                const c = el('input', { type: 'checkbox', 'data-tel': tl });
+                c.addEventListener('change', () => flip(on.tels, tl));
+                return el('label', {}, c, tl);
+            }));
+            const det = el('details', { class: 'pa-lcf-src' }, el('summary', { class: 'pa-lcf-chip', style: '--c:#9ab' }, el('i'), 'All sources'), menu);
+            document.addEventListener('click', e => { if (det.open && !det.contains(e.target)) det.open = false; });
+            kids.push(el('span', { class: 'pa-lcf-sep' }), det);
+        }
+        bar.replaceChildren(...kids);
+        apply();
     }
     ['obs-name', 'obs-ra', 'obs-dec'].forEach(id => $(id)?.addEventListener('input', () => schedulePreview()));
     // the form is filled by these (a new target, an edited one, a database search pick): show that target

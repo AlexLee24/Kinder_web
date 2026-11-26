@@ -182,6 +182,7 @@ def latest_by_object(names):
 
 
 RECENT_DAYS = 3               # 'recent' photometry: the last 3 days
+MAX_AGE_DAYS = 30             # older detections are not used at all (the user's rule, 2026-11-26)
 
 
 def _mjd_now():
@@ -195,8 +196,8 @@ def magnitudes(name, typed_mag=None, detections=None, now_mjd=None):
     only with no detection at all in RECENT_DAYS, going back: 'own_old' its latest in that filter, else 'other' the
     latest in any filter; else 'typed' the magnitude typed on the target. Nothing: NoMagnitude."""
     det = latest_detections(name) if detections is None else list(detections)
-    det.sort(key=lambda d: -d['mjd'])
     now = _mjd_now() if now_mjd is None else now_mjd
+    det = sorted((d for d in det if d['mjd'] >= now - MAX_AGE_DAYS), key=lambda d: -d['mjd'])
     recent = [d for d in det if d['mjd'] >= now - RECENT_DAYS]
     typed = None
     try:
@@ -217,7 +218,7 @@ def magnitudes(name, typed_mag=None, detections=None, now_mjd=None):
             out[sf] = {'mag': typed, 'from': 'typed'}
             continue
         else:
-            raise NoMagnitude(f'{name} has no photometry on Kinder: enter its magnitude to use auto exposure.')
+            raise NoMagnitude(f'{name} has no photometry on Kinder in the last {MAX_AGE_DAYS} days: type its magnitude in the MAG column under Auto Exposure.')
         out[sf] = {'mag': d['mag'], 'from': how, 'filter': d['filter'], 'mjd': d['mjd'], 'source': d['source']}
     return out
 
@@ -385,7 +386,7 @@ def latest_mag(result):
 def apply(target, **kw):
     """Compute and store one target's plan (its filters follow it). Returns the result, or raises NoMagnitude."""
     from app.db.obs import set_auto_exposure_result
-    res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or None,
+    res = compute(target['name'], target['ra'], target['dec'], None,          # its stored mag may be old: not used target.get('auto_snr') or None,
                   target.get('auto_plan'), telescope=(target.get('telescope') or TELESCOPE).upper(),
                   camera=target.get('auto_camera'), mags_set=target.get('auto_mags'), **kw)
     set_auto_exposure_result(target['id'], res, filters=res['plan'] or None, mag=latest_mag(res))

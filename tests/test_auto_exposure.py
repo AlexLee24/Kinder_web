@@ -108,10 +108,10 @@ def test_target_form_without_magnitude_cannot_use_auto(monkeypatch):
     auto, snr, choice, res, err, cam = targets._auto_exposure(
         {'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00', 'mag': '', 'auto_exposure': True, 'auto_snr': 15,
          'auto_plan': 'rp,gp'}, 'SLT')
-    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'enter its magnitude' in err and cam is None
+    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'MAG column' in err and cam is None
     assert targets._auto_exposure({'auto_exposure': True, 'auto_snr': 1}, 'SLT')[4].startswith('Target S/N')
     lot = targets._auto_exposure({'auto_exposure': True, 'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00'}, 'LOT')
-    assert lot[0] is True and lot[5] is None and 'enter its magnitude' in lot[4]          # LOT auto now too
+    assert lot[0] is True and lot[5] is None and 'MAG column' in lot[4]          # LOT auto now too
     assert targets._auto_exposure({'auto_exposure': False, 'auto_camera': 'SLT_DZ936'}, 'SLT')[5] == 'SLT_DZ936'
 
 
@@ -210,3 +210,12 @@ def test_a_magnitude_typed_for_a_filter_replaces_the_automatic_one(monkeypatch):
     assert res['filters']['zp']['from'] == 'own' and res['filters']['ip']['from'] == 'bright'
     nophot = ae.compute('SN 2026x', 47.9, -2.0, detections=[], now_mjd=NOW, mags_set={'rp': 19.0})
     assert nophot['filters']['rp']['mag'] == 19.0 and nophot['filters']['gp']['mag'] == 19.0
+
+
+def test_detections_older_than_a_month_are_not_used():
+    old = [{'mag': 17.0, 'mjd': NOW - 40, 'filter': 'r', 'source': 'ZTF'}]
+    with pytest.raises(ae.NoMagnitude):
+        ae.magnitudes('X', None, old, NOW)
+    assert ae.magnitudes('X', '19', old, NOW)['rp']['from'] == 'typed'
+    m = ae.magnitudes('X', None, old + [{'mag': 18.0, 'mjd': NOW - 20, 'filter': 'g', 'source': 'ZTF'}], NOW)
+    assert m['rp']['mag'] == 18.0 and m['rp']['from'] == 'other'
