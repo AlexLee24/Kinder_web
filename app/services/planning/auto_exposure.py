@@ -93,6 +93,21 @@ def latest_detections(name):
     return out
 
 
+def latest_by_object(names):
+    """{object name (bare, as in transient.objects): its latest detection's magnitude}, in one query: the Newest Mag
+    the target form fills in when an object is picked (the same one the daily update writes)."""
+    from app.db import get_db_connection
+    names = [n for n in set(names or []) if n]
+    if not names:
+        return {}
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute('SELECT DISTINCT ON (o.name) o.name, p.mag FROM transient.photometry p JOIN transient.objects o '
+                    'ON o.obj_id = p.obj_id WHERE o.name = ANY(%s) AND p.mag IS NOT NULL AND p.mag > 0 '
+                    'AND p.mag_err IS NOT NULL ORDER BY o.name, p."MJD" DESC', (names,))
+        return {n: float(m) for n, m in cur.fetchall()}
+
+
 def magnitudes(name, typed_mag=None, detections=None):
     """{script filter: {'mag', 'from'}} for the five filters; 'from' says where the magnitude came from."""
     det = latest_detections(name) if detections is None else detections
@@ -218,13 +233,22 @@ def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=Non
     return {'computed_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'night': (day or datetime.now(TZ8).date()).isoformat(),
             'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'selected': picked, 'total_s': total,
             'filters': filters, 'options': options, 'plan': plan, 'too_long': total > MAX_TOTAL_S,
-            'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes}
+            'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes, 'latest': _latest(mags)}
+
+
+def _latest(mags):
+    """The newest detection the plan was computed from ({'mag', 'filter', 'mjd', 'source'}), None when typed."""
+    ds = [m for m in mags.values() if m.get('from') in ('own', 'other') and m.get('mjd') is not None]
+    if not ds:
+        return None
+    d = max(ds, key=lambda m: m['mjd'])
+    return {k: d.get(k) for k in ('mag', 'filter', 'mjd', 'source')}
 
 
 def latest_mag(result):
-    """The magnitude to show on the target: the latest detection in any filter it was computed from."""
-    ds = [f for f in result['filters'].values() if f.get('from') in ('own', 'other') and f.get('mjd') is not None]
-    return max(ds, key=lambda f: f['mjd'])['mag'] if ds else None
+    """The magnitude to show on the target (its Newest Mag): the latest detection it was computed from."""
+    d = result.get('latest') or _latest(result.get('filters') or {})
+    return d['mag'] if d else None
 
 
 def apply(target, **kw):

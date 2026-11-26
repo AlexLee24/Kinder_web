@@ -277,6 +277,12 @@ def api_search_target():
                                   apply_permissions=True,
                                   viewer_email=session['user'].get('email') or None,
                                   viewer_is_admin=bool(session['user'].get('is_admin')))
+        try:                    # Newest Mag: the latest detection, as the daily update and auto exposure use
+            from app.services.planning.auto_exposure import latest_by_object
+            latest = latest_by_object([r['name'] for r in rows])
+        except Exception:
+            logger.exception('latest magnitudes for the target search')
+            latest = {}
         results = []
         for r in rows:
             results.append({
@@ -287,7 +293,7 @@ def api_search_target():
                 'ra': r.get('ra'),
                 'dec': r.get('declination'),
                 'redshift': r.get('redshift'),
-                'mag': r.get('brightest_mag') or r.get('discoverymag'),
+                'mag': latest.get(r['name']) or r.get('brightest_mag') or r.get('discoverymag'),
                 'type': r.get('type') or '',
                 'internal_names': r.get('internal_names') or '',
             })

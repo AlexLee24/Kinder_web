@@ -234,7 +234,7 @@ function selectSearchResult(obj) {
     }
     // Fill magnitude
     if (obj.mag != null) {
-        document.getElementById('obs-mag').value = parseFloat(obj.mag).toFixed(1);
+        document.getElementById('obs-mag').value = parseFloat(obj.mag).toFixed(2);
     } else if (obj.lsst_oid) {
         fillLsstMag(obj.lsst_oid);
     }
@@ -486,6 +486,14 @@ function _autoPick(f, on) {
     autoSel = next;
     if (autoResult) _applyAutoSel(); else _renderAutoPlan();
 }
+// The plan was computed from the latest detection on Kinder: it is the target's Newest Mag
+function _fillLatestMag(res) {
+    const l = res && res.latest, el = document.getElementById('obs-mag');
+    if (!l || !el) return;
+    el.value = Number(l.mag).toFixed(2);
+    el.title = 'Latest detection on Kinder: ' + l.filter + ' ' + Number(l.mag).toFixed(2) + ', ' +
+        new Date((l.mjd - 40587) * 864e5).toISOString().slice(0, 10) + (l.source ? ' (' + l.source + ')' : '');
+}
 function _autoUse(list) { autoSel = list.slice(); _applyAutoSel(); }
 
 function _renderAutoPlan() {
@@ -558,6 +566,7 @@ async function applyAutoExposure() {
             return;
         }
         autoResult = data.result;
+        _fillLatestMag(autoResult);
         _applyAutoSel();
     } catch (e) {
         console.error('Auto exposure error:', e);

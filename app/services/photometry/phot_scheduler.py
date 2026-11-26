@@ -295,8 +295,8 @@ def update_target_mags():
                                     """SELECT p.mag FROM transient.photometry p
                        JOIN transient.objects o ON p.obj_id=o.obj_id
                        WHERE o.name = %s
-                                             AND p.mag IS NOT NULL
-                                             AND CAST(p.mag AS TEXT) NOT LIKE '>%%'
+                                             AND p.mag IS NOT NULL AND p.mag > 0
+                                             AND p.mag_err IS NOT NULL
                        ORDER BY p."MJD" DESC
                        LIMIT 1""",
                     (bare_name,)

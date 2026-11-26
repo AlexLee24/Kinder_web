@@ -93,3 +93,13 @@ def test_the_shortest_frame_rule_never_saturates_a_bright_target():
     for mag in (9.0, 11.0, 12.5):
         p = ae.plan_filter('Sloan_r', 47.9087, -2.0267, mag, 20, when)
         assert p['exp'] is None or p['exp'] < p['sat_s'] * ae.SAT_MARGIN or p['exp'] <= 1, (mag, p)
+
+
+def test_the_newest_detection_becomes_the_newest_mag(monkeypatch):
+    _fake(monkeypatch, {f: _p(65) for f in ('Sloan_u', 'Sloan_g', 'Sloan_r', 'Sloan_i', 'Sloan_z')})
+    det = {**DET, 'r': {**DET['r'], 'mjd': 61366.0}}               # r is the newest
+    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=det)
+    assert res['latest'] == {'mag': 16.73, 'filter': 'r', 'mjd': 61366.0, 'source': 'SLT(AUTO)'}
+    assert ae.latest_mag(res) == res['latest']['mag']
+    typed = ae.compute('SN 2026x', 47.9, -2.0, typed_mag='18', detections={})
+    assert typed['latest'] is None and ae.latest_mag(typed) is None
