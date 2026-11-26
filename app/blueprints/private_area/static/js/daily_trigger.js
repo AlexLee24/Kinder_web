@@ -988,6 +988,7 @@ async function loadAstroInfoForTargets() {
         data.targets.forEach(function(td) {
             var ids = nameToIds[td.name] || [];
             ids.forEach(function(id) {
+                if (data.moon_alts) dtMoonTrack = { times: data.times_local, alts: data.moon_alts };
                 fillAstroInfo(id, td, data.times_local);
             });
         });
@@ -1039,7 +1040,9 @@ function moonSepColor(sep) {
 //   the time above 30° is filled; 30° and 60° are labelled; ticks every 3 h; "now" as a thin line;
 //   under it, in words, when the target is above 30° in the dark.
 let dtNightInfo = null;
-function drawMiniVisibilitySVG(altitudes, timesLocal, small) {
+// the Moon's altitude for the same night (/api/visibility_data moon_alts), kept for the table's mini plots
+var dtMoonTrack = null;
+function drawMiniVisibilitySVG(altitudes, timesLocal, small, moonAlts) {
     var N = altitudes ? altitudes.length : 0;
     if (!N || !timesLocal || timesLocal.length !== N) return '';
     var W = small ? 96 : 200, L = small ? 0 : 24, R = small ? 0 : 4, T = small ? 2 : 6, PH = small ? 22 : 56, AX = small ? 2 : 15, H = T + PH + AX;
@@ -1087,6 +1090,17 @@ function drawMiniVisibilitySVG(altitudes, timesLocal, small) {
         prev = up;
     }
     if (prev) fillD += 'L' + f(xI(N - 1)) + ',' + f(y30) + ' Z';
+    // the Moon: a dashed pale line (above the horizon only)
+    var moon = moonAlts || (dtMoonTrack && dtMoonTrack.times && dtMoonTrack.times[0] === timesLocal[0] ? dtMoonTrack.alts : null);
+    if (moon && moon.length === N) {
+        var moonD = '', pen = false;
+        for (var m = 0; m < N; m++) {
+            if (moon[m] < 0) { pen = false; continue; }
+            moonD += (pen ? 'L' : 'M') + f(xI(m)) + ',' + f(yA(moon[m])) + ' ';
+            pen = true;
+        }
+        if (moonD) out.push('<path class="pa-vis-moon" d="' + moonD + '" fill="none" stroke="rgba(235,230,200,0.7)" stroke-width="' + (small ? 1 : 1.2) + '" stroke-dasharray="' + (small ? '2 1.5' : '3 2') + '" stroke-linejoin="round"><title>Moon</title></path>');
+    }
     if (fillD) out.push('<path d="' + fillD + '" fill="rgba(77,184,255,0.22)"/>');
     if (belowD) out.push('<path d="' + belowD + '" fill="none" stroke="rgba(255,120,110,0.55)" stroke-width="1.4" stroke-linejoin="round"/>');
     if (aboveD) out.push('<path d="' + aboveD + '" fill="none" stroke="#4db8ff" stroke-width="1.8" stroke-linejoin="round"/>');
