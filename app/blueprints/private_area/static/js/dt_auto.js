@@ -761,6 +761,12 @@
             }));
             const det = el('details', { class: 'pa-lcf-src' }, el('summary', { class: 'pa-lcf-chip', style: '--c:#9ab' }, el('i'), 'All sources'), menu);
             document.addEventListener('click', e => { if (det.open && !det.contains(e.target)) det.open = false; });
+            det.addEventListener('toggle', () => {           // keep the menu on screen (narrow windows)
+                menu.style.left = '0px';
+                if (!det.open) return;
+                const r = menu.getBoundingClientRect(), room = document.documentElement.clientWidth - 8;
+                if (r.right > room) menu.style.left = Math.round(Math.max(-r.left + 8, room - r.right)) + 'px';
+            });
             kids.push(el('span', { class: 'pa-lcf-sep' }), det);
         }
         bar.replaceChildren(...kids);

@@ -558,7 +558,7 @@ function _moonLine(res) {
 function _renderAutoPlan() {
     const box = document.getElementById('auto-exp-plan');
     if (!box) return;
-    if (!autoPanelOpen && !autoResult) { box.hidden = true; box.innerHTML = ''; return; }
+    if (!autoPanelOpen && !autoResult) { box.hidden = true; box.innerHTML = ''; document.getElementById('auto-exp-choose')?.replaceChildren(); return; }
     const res = autoResult && autoResult.filters ? autoResult : null;
     const band = sf => sf;           // the script's filter names, as in the filter rows below: up gp rp ip zp
     const allOn = autoSel.length === AUTO_ALL.length;
@@ -614,6 +614,9 @@ function _renderAutoPlan() {
         if ((res.notes || []).length) html += '<p class="pa-auto-warn">' + escapeHtml(res.notes.join(' ')) + '</p>';
     }
     box.innerHTML = html;
+    // the plan pick sits under the exposures it fills (the target window keeps a place for it there)
+    const slot = document.getElementById('auto-exp-choose');
+    if (slot) { slot.replaceChildren(); const pick = box.querySelector('.pa-auto-choose'); if (pick) slot.appendChild(pick); }
     box.hidden = false;
 }
 
