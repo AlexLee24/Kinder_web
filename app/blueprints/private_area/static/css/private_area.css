@@ -1370,7 +1370,7 @@ body::before {
 .pa-target-box .pa-auto-tbl input.pa-auto-mag, .pa-target-box .pa-auto-tbl input { padding: 1px 6px; height: 24px; min-height: 0; box-sizing: border-box; }
 .pa-auto-snr input[type="checkbox"] { width: auto; }
 .pa-target-box .pa-filter-subtotal { white-space: nowrap; width: auto; font-size: 0.8125rem; }
-.pa-target-box .pa-filter-row select, .pa-target-box .pa-filter-row input { height: 26px; box-sizing: border-box; }
+.pa-target-box .pa-filter-row select, .pa-target-box .pa-filter-row input { height: 24px; min-height: 0; box-sizing: border-box; }
 .pa-target-box .pa-auto-exp-row { position: relative; }
 .pa-target-box .pa-auto-snr { white-space: nowrap; }
 @media (max-width: 1100px), (max-height: 640px) {
@@ -1387,7 +1387,7 @@ body::before {
     .pa-modal-box.pa-target-box { width: 100%; max-height: 100dvh; border-radius: 0;
         padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
     .pa-tw-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-    .pa-target-box .pa-auto-tbl .pa-auto-from { display: none; }      /* where a magnitude came from: on wider screens */
+    .pa-target-box .pa-auto-tbl :is(.pa-auto-from, thead th:nth-child(3)) { display: none; }      /* where a magnitude came from: on wider screens */
 }
 
 /* Daily Trigger windows are native modal <dialog>s (dt_dialogs.js): the dialog is the dimmed full-screen layer */
@@ -1402,9 +1402,17 @@ dialog.pa-modal-overlay h3[tabindex="-1"]:focus { outline: none; }     /* the wi
 @media (pointer: coarse) {
     .dt-page :is(button, select, input:not([type="checkbox"], [type="radio"])),
     .pa-modal-box :is(button, select, input:not([type="checkbox"], [type="radio"])) { min-height: 44px; min-width: 44px; }
-    .dt-page input[type="checkbox"]:not(.pa-checklist-checkbox), .pa-modal-box input[type="checkbox"] { width: 22px; height: 22px; }
-    .dt-page label:has(> input[type="checkbox"]), .pa-modal-box label:has(> input[type="checkbox"]) {
+    /* plain checkboxes only: switches and custom boxes keep their own hidden input */
+    .dt-page input[type="checkbox"]:not(.pa-checklist-checkbox, .pa-action-switch input), .pa-modal-box input[type="checkbox"] { width: 22px; height: 22px; }
+    .dt-page label:not(.pa-action-switch, .pa-checklist-item label):has(> input[type="checkbox"]), .pa-modal-box label:has(> input[type="checkbox"]) {
         display: inline-flex; align-items: center; gap: 8px; min-height: 44px; }
+    .dt-page .pa-action-switch { min-height: 0; min-width: 0; }
+    /* a target's actions on a phone: one row of 44 px buttons, Edit / Copy / Trigger side by side */
+    html body .dt-page .pa-target-table tr:not(.pa-row-off) .pa-action-row-btns { flex-direction: row; align-items: stretch; gap: 8px; padding: 0; width: 100%; }
+    html body .dt-page .pa-target-table tr:not(.pa-row-off) .pa-action-cell { align-items: stretch; width: 100%; }
+    html body .dt-page .pa-action-row-btns .pa-btn-action { flex: 1 1 0; justify-content: center; min-height: 44px; padding: 0 8px; }
+    html body .dt-page .pa-action-row-btns .pa-copy-wrap { flex: 1 1 0; display: flex; }
+    .dt-page .pa-action-row-btns .pa-copy-wrap > .pa-btn-action { flex: 1; }
 }
 html { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); scroll-padding-top: 96px; }
 .pa-auto-badge { display: inline-block; margin-top: 2px; font-size: 0.6875rem; color: #4ade80; }
@@ -2381,8 +2389,67 @@ html { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); scr
 .dt-page :is(b, strong), dialog.pa-modal-overlay :is(b, strong) { font-weight: 600; }
 @media (max-width: 640px) {
     #visibilityPlotModal > .pa-modal-box { width: 100% !important; max-width: 100% !important; height: 100dvh !important; border-radius: 0; }
-    .pa-vp-body { flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+    .pa-vp-body { flex-direction: column; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
     .pa-vp-body > * { min-width: 0; width: auto !important; max-width: none !important; flex: none !important; }
     .pa-vp-plot { height: 360px; }
 }
 .pa-lcf-menu { max-width: calc(100vw - 16px); }
+@media (max-width: 768px) { #scrollToTopBtn { display: none !important; } }   /* phones: tap the status bar; the button covered content */
+/* the target window's Cancel / Save sit in its header, always in sight (on a phone the header stays on top while the window scrolls) */
+.pa-tw-actions { display: flex; align-items: center; gap: 8px; }
+.pa-tw-actions .pa-btn-save { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; }
+.pa-tw-actions .pa-btn-cancel { padding: 6px 10px; }
+.pa-tw-target .pa-input { padding: 0.375rem 0.625rem; }
+.pa-tw-target .pa-field-label { font-size: 0.6875rem; }
+@media (max-width: 1100px), (max-height: 640px) {
+    .pa-modal-box.pa-target-box { padding-top: 0; }
+    .pa-tw-head { position: sticky; top: 0; z-index: 3; background: rgb(26, 26, 30);
+        margin: 0 -16px 10px; padding: max(10px, env(safe-area-inset-top)) 16px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+}
+/* the exposure rows' column names sit above the first row, not on its inputs */
+.pa-target-box .pa-filter-row .pa-field-label { position: static; display: block; transform: none; padding: 0 0 2px; background: none; font-size: 0.6875rem; line-height: 1.2; }
+/* laptops (about 1280 x 800): the per-row subtotal goes (the total is above the rows) so the numbers keep their width,
+   and the top tier takes only the height it needs */
+@media (max-width: 1400px) and (min-width: 1101px) {
+    .pa-target-box .pa-filter-subtotal { display: none; }
+    .pa-target-box .pa-filter-row .pa-field { min-width: 52px; }
+    .pa-target-grid { grid-template-columns: minmax(230px, 0.68fr) minmax(0, 1fr) minmax(0, 0.62fr); }
+}
+@media (max-height: 880px) and (min-width: 1101px) {
+    .pa-target-grid { grid-template-rows: auto minmax(0, 1fr); }
+    .pa-tp-vis svg { max-height: 150px; }
+    .pa-target-preview .pa-tp-sky .dtw-sky { width: min(100%, 170px); }
+    /* a denser Auto Exposure column */
+    .pa-target-box .pa-auto-opt { padding: 1px 6px; font-size: 0.6875rem; }
+    .pa-target-box .pa-auto-opts { gap: 3px; }
+    .pa-target-box .pa-auto-tbl :is(td, th) { height: 20px; }
+    .pa-target-box .pa-auto-tbl input.pa-auto-mag, .pa-target-box .pa-auto-tbl input { height: 20px; }
+    .pa-target-box .pa-auto-exp-row { gap: 4px 8px; }
+    .pa-target-box .pa-auto-exp-row .pa-btn-auto-exp { padding-top: 6px; padding-bottom: 6px; }
+    .pa-target-box .pa-filter-rows { gap: 2px; }
+    .pa-target-box .pa-auto-choose { padding: 4px 8px; gap: 3px; }
+    .pa-target-box .pa-filter-actions { min-height: 0; }
+    .pa-target-box .pa-filter-actions .pa-btn-link { padding-top: 2px; padding-bottom: 2px; }
+    .pa-target-box .pa-auto-pick { padding: 3px 8px; }
+    .pa-target-grid { row-gap: 8px; }
+    .pa-tw-exp, .pa-tp-lcsec { padding-top: 6px; }
+    .pa-target-box .pa-filter-row select, .pa-target-box .pa-filter-row input { height: 22px; }
+    .pa-modal-box.pa-target-box { padding-top: 10px; }
+}
+.pa-target-box .pa-filter-row .pa-field { flex: 1 1 0; min-width: 0; max-width: none; }
+.pa-target-box .pa-filter-row .pa-field :is(input, select) { width: 100%; }
+.pa-target-box .pa-filter-subtotal { flex: none; width: 64px; text-align: right; }
+/* plain checkboxes drawn the same on every browser (iOS Safari's dark native box reads as a black square) */
+.dt-page input[type="checkbox"]:not(.pa-checklist-checkbox, .pa-action-switch input),
+.pa-modal-box input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none; margin: 0; flex: none; width: 18px; height: 18px; border-radius: 5px; cursor: pointer;
+    border: 1.5px solid rgba(255, 255, 255, 0.38); background: transparent no-repeat center / 12px 12px; vertical-align: middle;
+    transition: background-color 0.15s, border-color 0.15s; }
+.dt-page input[type="checkbox"]:not(.pa-checklist-checkbox, .pa-action-switch input):checked,
+.pa-modal-box input[type="checkbox"]:checked {
+    border-color: var(--kw-accent, #f0a05a); background-color: var(--kw-accent, #f0a05a);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a1206' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E"); }
+.dt-page input[type="checkbox"]:focus-visible, .pa-modal-box input[type="checkbox"]:focus-visible { outline: 2px solid var(--kw-accent, #f0a05a); outline-offset: 2px; }
+@media (pointer: coarse) {
+    .dt-page input[type="checkbox"]:not(.pa-checklist-checkbox, .pa-action-switch input), .pa-modal-box input[type="checkbox"] { width: 22px; height: 22px; background-size: 14px 14px; }
+}

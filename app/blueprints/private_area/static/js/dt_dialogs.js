@@ -19,13 +19,16 @@
         if (shown && !dlg.open) {
             try { dlg.showModal(); } catch (e) { dlg.setAttribute('open', ''); }
         } else if (!shown && dlg.open) {
+            dlg._byPage = true;              // closed by the page's own code: its close event must not undo a reopen
             dlg.close();
         }
     }
     function wire(dlg) {
         new MutationObserver(() => sync(dlg)).observe(dlg, { attributes: true, attributeFilter: ['style'] });
         dlg.addEventListener('close', () => {
-            if (dlg.style.display === 'none') return;           // closed by the page's own code
+            // the close event comes later than close(): a window closed by the page and opened again at once stays open
+            if (dlg._byPage) { dlg._byPage = false; sync(dlg); return; }
+            if (dlg.style.display === 'none') return;
             dlg.style.display = 'none';
             (ON_CLOSE[dlg.id] || (() => {}))();
         });

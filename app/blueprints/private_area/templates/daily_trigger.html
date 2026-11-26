@@ -112,7 +112,7 @@
         .dt-page .pa-target-table th { vertical-align: bottom; white-space: normal; }
         .dt-page .pa-td-last-obs { font-size: 0.8125rem; color: var(--kw-text-secondary); line-height: 1.35; }
         .dt-page .pa-last-obs-val { display: inline-block; font-family: var(--kw-font-mono, monospace); }
-        @media (max-width: 768px) { .dt-page .pa-last-obs-val { text-align: right; } }
+        @media (max-width: 768px) { .dt-page .pa-last-obs-val { text-align: left; } }
         .dt-page .pa-td-last-obs small { display: block; margin-top: 2px; color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); font-size: 0.75rem; }
         .dt-page .pa-td-last-obs .pa-never { color: var(--kw-text-muted); font-family: var(--kw-font-sans, inherit); }
         .dt-page tr.pa-row-off .pa-action-cell { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 6px; }
@@ -392,6 +392,20 @@
             .dt-page .dt-obs-topbar .pa-obs-actions :is(#btn-add-slt, #btn-add-lot) { grid-column: 1 / -1; }
             .dt-page .pa-target-table tr { border-color: var(--kw-border); border-radius: var(--kw-radius-lg); }
             .dt-page .pa-target-table td::before { color: var(--kw-text-muted); }
+            /* phone card, compact: Target and Tonight full width; Exposure beside RA / Dec and its image; then Note
+               and the actions in one row */
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) { display: grid !important; grid-template-columns: minmax(0, 1fr) 112px; column-gap: 12px; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td { grid-column: 1 / -1; min-width: 0; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(3) { grid-column: 2; grid-row: 3; overflow-wrap: anywhere; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(4) { grid-column: 1; grid-row: 3; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(1)::before { content: none; }
+            .dt-page .pa-target-table tbody tr:not(.pa-row-off) > td:nth-of-type(3) :is(img, .dta-thumb, .pa-sky-thumb) { width: 100%; height: auto; }
+            .dt-page .pa-target-table tr:not(.pa-row-off) .pa-action-row-btns .pa-btn-action { justify-content: center; }
+            /* Observation log controls: year · month, then Today · Refresh · Data in one row, then filter and search */
+            .dt-page .pa-log-controls { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+            .dt-page .pa-log-controls > :is(#log-year, #log-month) { grid-column: span 3; }
+            .dt-page .pa-log-controls > .pa-btn-log-action { grid-column: span 2; }
+            .dt-page .pa-log-controls > :is(#logShowFilterBtn, #log-target-search) { grid-column: 1 / -1; }
         }
     </style>
 {% endblock %}
@@ -798,7 +812,7 @@
     <dialog id="calendarModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
         <div class="pa-modal-box" style="max-width:560px;width:96vw;">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:12px;">
-                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform: none;color:rgba(255,255,255,0.7);">Next two weeks</h3>
+                <h3 style="margin:0;font-size:1rem;font-weight:500;letter-spacing:normal;text-transform:none;color:var(--kw-text-primary, #f5f5f7);">Next two weeks</h3>
                 <div style="display:flex;gap:8px;">
                     <a href="/lab_calendar" class="kw-btn kw-btn-sm">Open calendar</a>
                     <button type="button" onclick="document.getElementById('calendarModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
@@ -812,7 +826,7 @@
     <dialog id="weatherModal" class="pa-modal-overlay" onclick="if(event.target===this)this.style.display='none'">
         <div class="pa-modal-box" style="max-width:900px;width:95vw;height:90vh;display:flex;flex-direction:column;overflow:hidden;">
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;flex-shrink:0;">
-                <h3 style="margin:0;font-size:1rem;letter-spacing:2px;text-transform: none;color:rgba(255,255,255,0.7);">Weather · Lulin Observatory</h3>
+                <h3 style="margin:0;font-size:1rem;font-weight:500;letter-spacing:normal;text-transform:none;color:var(--kw-text-primary, #f5f5f7);">Weather · Lulin Observatory</h3>
                 <button type="button" onclick="document.getElementById('weatherModal').style.display='none'" class="pa-btn-cancel" style="padding:5px 14px;">Close</button>
             </div>
             <iframe data-lazy-src="https://www.meteoblue.com/en/weather/widget/meteogram/lulin-qianshan_taiwan_6725044?geoloc=fixed&temperature_units=CELSIUS&windspeed_units=BEAUFORT&precipitation_units=MILLIMETER&forecast_days=5&layout=dark&autowidth=auto&user_key=656f3b53b09654b4&embed_key=6d8d653c7ccd381c&sig=575d65c2e94c225a946e4aa1e8f11f4668d886a1cf5980225ba72c8e844ca79f" frameborder="0" scrolling="NO" allowtransparency="true" sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox" style="width:100%;flex:1;border:none;display:block;min-height:0;"></iframe>
@@ -829,7 +843,13 @@
             <!-- one screen, no scrolling: target | exposure plan | the target tonight -->
             <div class="pa-tw-head">
                 <h3 id="target-modal-title" tabindex="-1" autofocus>New Target</h3>
-                <button type="button" class="pa-tw-close" onclick="closeTargetModal()" aria-label="Close">&times;</button>
+                <div class="pa-tw-actions">
+                    <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
+                    <button type="submit" form="add-target-form" class="pa-btn-save">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <span id="target-modal-submit-label">Save Target</span>
+                    </button>
+                </div>
             </div>
             <div class="pa-target-grid">
 
@@ -848,8 +868,10 @@
                          MAG column takes magnitudes per filter -->
                     <input type="hidden" id="obs-mag">
                     <div class="pa-tw-pair">
-                        <input type="text" id="obs-ra" required placeholder="RA (h:m:s or deg)" class="pa-input">
-                        <input type="text" id="obs-dec" required placeholder="Dec (d:m:s or deg)" class="pa-input">
+                        <label class="pa-field"><span class="pa-field-label">RA</span>
+                            <input type="text" id="obs-ra" required placeholder="h:m:s or deg" class="pa-input"></label>
+                        <label class="pa-field"><span class="pa-field-label">Dec</span>
+                            <input type="text" id="obs-dec" required placeholder="d:m:s or deg" class="pa-input"></label>
                     </div>
                     <div class="pa-tw-pair">
                         <label class="pa-field"><span class="pa-field-label">Priority</span>
@@ -873,16 +895,13 @@
                         </label>
                     </div>
 
-                    <input type="text" id="obs-plan" placeholder="Note (required for Urgent)" class="pa-input">
-                    <input type="text" id="obs-note-gl" placeholder="Note for GREATLab" class="pa-input">
-
-                    <div class="pa-modal-footer">
-                        <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
-                        <button type="submit" class="pa-btn-save">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            <span id="target-modal-submit-label">Save Target</span>
-                        </button>
+                    <div class="pa-tw-pair">
+                        <label class="pa-field"><span class="pa-field-label">Note for Lulin</span>
+                            <input type="text" id="obs-plan" placeholder="Urgent: required" class="pa-input"></label>
+                        <label class="pa-field"><span class="pa-field-label">Note for GREATLab</span>
+                            <input type="text" id="obs-note-gl" placeholder="What and why" class="pa-input"></label>
                     </div>
+
                 </section>
 
                 <!-- column 2: exposures -->
