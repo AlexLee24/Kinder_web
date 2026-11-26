@@ -38,12 +38,15 @@ def _auto_exposure(data, telescope):
     and no magnitude typed it cannot use auto exposure."""
     from app.services.planning import auto_exposure as ae
     auto = bool(data.get('auto_exposure', False)) and telescope != 'LOT'
-    try:
-        snr = float(data.get('auto_snr') or ae.DEFAULT_SNR)
-    except (TypeError, ValueError):
-        snr = 0
-    if not 3 <= snr <= 500:
-        return auto, None, None, None, 'Target S/N must be a number between 3 and 500.'
+    raw = str(data.get('auto_snr') if data.get('auto_snr') is not None else '').strip().lower()
+    snr = None                         # blank / auto: from the target's brightness (auto_exposure.auto_snr)
+    if raw not in ('', 'auto', '0'):
+        try:
+            snr = float(raw)
+        except ValueError:
+            snr = 0
+        if not 3 <= snr <= 500:
+            return auto, None, None, None, 'Target S/N must be a number between 3 and 500, or blank for auto.'
     choice = ','.join(ae.selection(data.get('auto_plan')))
     if not auto:
         return False, snr, choice, None, None

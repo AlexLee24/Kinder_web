@@ -453,9 +453,10 @@ function _clearAutoExposureState() {
     if (isAutoExposure) { _setAutoExpBadge(false); _renderAutoPlan(); }
 }
 
+// blank = automatic (S/N 10 for a brightest magnitude of 19 or brighter, else 20; chosen by the server)
 function _autoSnr() {
     const v = parseFloat((document.getElementById('obs-auto-snr') || {}).value);
-    return isFinite(v) && v > 0 ? v : 20;
+    return isFinite(v) && v > 0 ? v : '';
 }
 function _fmtSec(s) { return s < 90 ? s + ' s' : Math.round(s / 60) + ' min'; }
 function _autoParse(v) {
@@ -514,10 +515,16 @@ function _renderAutoPlan() {
         const when = new Date(res.when).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Taipei' });
         const total = _autoTotal(autoSel), long = total > res.max_total_s;
         html += '<div class="pa-auto-plan-head">' + (isAutoExposure ? 'Total ' + _fmtSec(total) + ' at the telescope · ' : 'Not auto: the filters below are your own · ') +
-            'highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr + '</div>';
+            'highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr +
+            (res.snr_auto ? ' (auto: brightest ' + Number(res.brightest).toFixed(2) + (res.brightest <= 19 ? ' ≤ 19' : ' > 19') + ')' : '') + '</div>';
         const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
-        const from = f => f.from === 'own' ? day(f.mjd) + ' · ' + (f.source || '')
-            : f.from === 'other' ? f.filter + ' ' + day(f.mjd) + ' (none in this filter)' : 'typed above';
+        const src = f => day(f.mjd) + ' \u00b7 ' + (f.source || '');
+        const from = f => ({
+            own: src(f),
+            bright: 'brightest in 3 days: ' + f.filter + ' ' + src(f),
+            own_old: src(f) + ' (nothing in 3 days)',
+            other: f.filter + ' ' + src(f) + ' (nothing in 3 days or in this filter)',
+        })[f.from] || 'typed above';
         html += '<table class="pa-auto-tbl"><thead><tr><th scope="col">Filter</th><th scope="col">Mag</th><th scope="col">From</th><th scope="col">Frames</th><th scope="col">S/N</th></tr></thead><tbody>' +
             AUTO_ALL.map(sf => {
                 const f = res.filters[sf];
@@ -1248,7 +1255,7 @@ function renderTable(telescope, targets) {
             const planName = (ar.selected || []).join(' ');
             const warn = ar.error || (ar.too_long ? planName + ' over ' + Math.round((ar.max_total_s || 1800) / 60) + ' min' : '');
             filterExpHTML += '<div class="pa-auto-badge' + (warn ? ' is-warn' : '') + '" title="' + escapeHtml(ar.error || ('CASTOR plan for ' + (ar.night || 'tonight'))) + '">AUTO · S/N ' +
-                escapeHtml(t.auto_snr || 20) + (planName ? ' · ' + escapeHtml(planName) : '') + (warn ? ' · ' + escapeHtml(ar.error ? 'no plan' : warn) : '') + '</div>';
+                escapeHtml(ar.snr || t.auto_snr || '') + (t.auto_snr ? '' : ' auto') + (planName ? ' · ' + escapeHtml(planName) : '') + (warn ? ' · ' + escapeHtml(ar.error ? 'no plan' : warn) : '') + '</div>';
         }
 
         let programBadge = '';
@@ -1402,7 +1409,7 @@ async function editTarget(id) {
     // Restore auto exposure: its S/N, plan and last CASTOR result
     const wasAuto = !!t.auto_exposure && t.telescope !== 'LOT';
     const snrEl = document.getElementById('obs-auto-snr');
-    if (snrEl) snrEl.value = t.auto_snr || 20;
+    if (snrEl) snrEl.value = t.auto_snr || '';
     autoSel = _autoParse(t.auto_plan);
     autoResult = t.auto_result && t.auto_result.filters ? t.auto_result : null;
     autoPanelOpen = !!autoResult;

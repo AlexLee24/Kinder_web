@@ -4,9 +4,9 @@ Each filter gets CASTOR's Simple-mode plan (castorCLI.plan.compute_plan, the cal
 the frame length and count that reach the target's S/N (default 20) for the magnitude it had last, at the hour
 tonight the target stands highest at Lulin.
 
-Magnitudes: each filter its own latest detection on the target's Transient page; a filter without one, the latest
-detection in any filter; a target with no detection at all, the magnitude typed on the target (no magnitude at all:
-no auto exposure).
+Magnitudes (from the target's Transient page, detections only): each filter its latest detection of the last 3 days,
+else the brightest detection of those 3 days in any filter; only with nothing in 3 days, going back: the filter's
+latest, else the latest in any filter; with no photometry, the magnitude typed on the target (none: no auto exposure).
 
 Filters: the ones picked on the target (auto_plan, e.g. 'up,gp,rp,ip,zp'; default all five), however long they take;
 a plan over MAX_TOTAL_S is flagged, with what g + r or r alone would take. Every filter is computed, so the form can
@@ -27,6 +27,15 @@ BANDS = (('up', 'u', 'Sloan_u'), ('gp', 'g', 'Sloan_g'), ('rp', 'r', 'Sloan_r'),
 ALL = tuple(sf for sf, _, _ in BANDS)
 PLANS = {'all': ALL, 'gr': ('gp', 'rp'), 'r': ('rp',)}       # the shorter plans offered when the pick runs long
 DEFAULT_SNR = 20.0
+# S/N when the target sets none (the user's rule, 2026-11-26): from its brightest magnitude in the plan
+AUTO_SNR_SPLIT_MAG = 19.0
+AUTO_SNR_BRIGHT, AUTO_SNR_FAINT = 10.0, 20.0     # brightest <= 19 mag: S/N 10; fainter: S/N 20
+
+
+def auto_snr(mags):
+    """(S/N, brightest magnitude) for a target without its own S/N, from the magnitudes its plan uses."""
+    brightest = min(m['mag'] for m in mags.values())
+    return (AUTO_SNR_BRIGHT if brightest <= AUTO_SNR_SPLIT_MAG else AUTO_SNR_FAINT), brightest
 MAX_TOTAL_S = 30 * 60          # a plan longer than this at the telescope is flagged
 # Shortest frame per filter: CASTOR answers for the target alone and would give a 17 mag target 60 s or less, but
 # template subtraction needs field stars to align on. What SLT frames did, 2026-11-15..25 auto photometry: z TS
@@ -79,23 +88,18 @@ def _obj_id(cur, name):
 
 
 def latest_detections(name):
-    """{band: {'mag', 'mjd', 'filter', 'source'}} of the target's latest detection per filter on its Transient page,
-    and '*': the latest in any filter. Detections only (a limit has no error)."""
+    """The target's detections on its Transient page, newest first: [{'mag', 'mjd', 'filter', 'source'}]. Detections
+    only (a limit has no error)."""
     from app.db import get_db_connection
     with get_db_connection() as conn:
         cur = conn.cursor()
         oid = _obj_id(cur, name)
         if oid is None:
-            return {}
+            return []
         cur.execute('SELECT mag, "MJD", filter, source FROM transient.photometry WHERE obj_id = %s AND mag IS NOT NULL '
                     'AND mag > 0 AND mag_err IS NOT NULL ORDER BY "MJD" DESC', (oid,))
         rows = cur.fetchall()
-    out = {}
-    for mag, mjd, f, src in rows:
-        d = {'mag': float(mag), 'mjd': float(mjd), 'filter': f, 'source': src or ''}
-        out.setdefault('*', d)
-        out.setdefault(_band(f), d)
-    return out
+    return [{'mag': float(m), 'mjd': float(t), 'filter': f, 'source': src or ''} for m, t, f, src in rows]
 
 
 def latest_by_object(names):
@@ -113,9 +117,23 @@ def latest_by_object(names):
         return {n: float(m) for n, m in cur.fetchall()}
 
 
-def magnitudes(name, typed_mag=None, detections=None):
-    """{script filter: {'mag', 'from'}} for the five filters; 'from' says where the magnitude came from."""
-    det = latest_detections(name) if detections is None else detections
+RECENT_DAYS = 3               # 'recent' photometry: the last 3 days
+
+
+def _mjd_now():
+    return datetime.now(timezone.utc).timestamp() / 86400 + 40587
+
+
+def magnitudes(name, typed_mag=None, detections=None, now_mjd=None):
+    """{script filter: {'mag', 'from', 'filter', 'mjd', 'source'}} for the five filters. Per filter:
+    'own'     its latest detection in that filter within RECENT_DAYS;
+    'bright'  else the brightest detection in any filter within RECENT_DAYS;
+    only with no detection at all in RECENT_DAYS, going back: 'own_old' its latest in that filter, else 'other' the
+    latest in any filter; else 'typed' the magnitude typed on the target. Nothing: NoMagnitude."""
+    det = latest_detections(name) if detections is None else list(detections)
+    det.sort(key=lambda d: -d['mjd'])
+    now = _mjd_now() if now_mjd is None else now_mjd
+    recent = [d for d in det if d['mjd'] >= now - RECENT_DAYS]
     typed = None
     try:
         typed = float(str(typed_mag).lstrip('>').strip()) if typed_mag not in (None, '') else None
@@ -123,14 +141,20 @@ def magnitudes(name, typed_mag=None, detections=None):
         typed = None
     out = {}
     for sf, b, _ in BANDS:
-        d = det.get(b) or det.get('*')
-        if d:
-            out[sf] = {'mag': d['mag'], 'from': 'own' if det.get(b) else 'other', 'filter': d['filter'], 'mjd': d['mjd'],
-                       'source': d['source']}
+        mine = [d for d in det if _band(d['filter']) == b]
+        if recent:
+            own = [d for d in recent if _band(d['filter']) == b]
+            d, how = (own[0], 'own') if own else (min(recent, key=lambda x: x['mag']), 'bright')
+        elif mine:
+            d, how = mine[0], 'own_old'
+        elif det:
+            d, how = det[0], 'other'
         elif typed is not None:
             out[sf] = {'mag': typed, 'from': 'typed'}
+            continue
         else:
             raise NoMagnitude(f'{name} has no photometry on Kinder: enter its magnitude to use auto exposure.')
+        out[sf] = {'mag': d['mag'], 'from': how, 'filter': d['filter'], 'mjd': d['mjd'], 'source': d['source']}
     return out
 
 
@@ -226,12 +250,13 @@ WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot 
        'below_horizon': 'not above the horizon tonight'}
 
 
-def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=None, detections=None):
-    """The target's plan for tonight for the filters picked (choice). Raises NoMagnitude when there is nothing to
-    compute it from."""
-    snr = float(snr or DEFAULT_SNR)
+def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None):
+    """The target's plan for tonight for the filters picked (choice), at its own S/N or (snr None) auto_snr's.
+    Raises NoMagnitude when there is nothing to compute it from."""
     picked = selection(choice)
-    mags = magnitudes(name, typed_mag, detections)
+    mags = magnitudes(name, typed_mag, detections, now_mjd)
+    snr_auto = not snr
+    snr, brightest = (auto_snr(mags) if snr_auto else (float(snr), min(m['mag'] for m in mags.values())))
     when, alt = best_time(ra, dec, day)
     filters, notes = {}, []
     for sf, b, cf in BANDS:
@@ -249,14 +274,14 @@ def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=Non
     if alt < MIN_ALT_DEG:
         notes.append(f'highest tonight only {alt:.0f}°')
     return {'computed_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'night': (day or datetime.now(TZ8).date()).isoformat(),
-            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'selected': picked, 'total_s': total,
+            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'snr_auto': snr_auto, 'brightest': round(brightest, 2), 'selected': picked, 'total_s': total,
             'filters': filters, 'options': options, 'plan': plan, 'too_long': total > MAX_TOTAL_S,
             'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes, 'latest': _latest(mags)}
 
 
 def _latest(mags):
     """The newest detection the plan was computed from ({'mag', 'filter', 'mjd', 'source'}), None when typed."""
-    ds = [m for m in mags.values() if m.get('from') in ('own', 'other') and m.get('mjd') is not None]
+    ds = [m for m in mags.values() if m.get('from') != 'typed' and m.get('mjd') is not None]
     if not ds:
         return None
     d = max(ds, key=lambda m: m['mjd'])
@@ -272,7 +297,7 @@ def latest_mag(result):
 def apply(target, **kw):
     """Compute and store one target's plan (its filters follow it). Returns the result, or raises NoMagnitude."""
     from app.db.obs import set_auto_exposure_result
-    res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or DEFAULT_SNR,
+    res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or None,
                   target.get('auto_plan'), **kw)
     set_auto_exposure_result(target['id'], res, filters=res['plan'] or None, mag=latest_mag(res))
     return res
