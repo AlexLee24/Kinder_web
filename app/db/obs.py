@@ -27,10 +27,18 @@ def _ensure_auto_exposure_column() -> None:
             cur.execute(
                 "ALTER TABLE obs.targets "
                 "ADD COLUMN IF NOT EXISTS auto_exposure BOOLEAN NOT NULL DEFAULT FALSE, "
-                "ADD COLUMN IF NOT EXISTS auto_snr DOUBLE PRECISION NOT NULL DEFAULT 20, "
+                "ADD COLUMN IF NOT EXISTS auto_snr DOUBLE PRECISION, "
                 "ADD COLUMN IF NOT EXISTS auto_plan TEXT NOT NULL DEFAULT 'up,gp,rp,ip,zp', "
                 "ADD COLUMN IF NOT EXISTS auto_result JSONB"
             )
+            # auto_snr NULL = chosen from the target's brightness (auto_exposure.auto_snr). It started as NOT NULL
+            # DEFAULT 20 (2026-11-26): once, those 20s (the default, never picked by anyone) become automatic.
+            cur.execute("SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'obs' "
+                        "AND table_name = 'targets' AND column_name = 'auto_snr'")
+            row = cur.fetchone()
+            if row and row[0] == 'NO':
+                cur.execute("ALTER TABLE obs.targets ALTER COLUMN auto_snr DROP NOT NULL, ALTER COLUMN auto_snr DROP DEFAULT")
+                cur.execute("UPDATE obs.targets SET auto_snr = NULL WHERE auto_snr = 20")
             conn.commit()
     except Exception as e:
         logger.error("_ensure_auto_exposure_column: %s", e)
@@ -211,7 +219,7 @@ def save_observation_target(name: str, ra: float, dec: float,
                              note: str = '',
                              created_by_email: str | None = None,
                              auto_exposure: bool = False,
-                             auto_snr: float = 20,
+                             auto_snr: float | None = None,
                              auto_plan: str = 'up,gp,rp,ip,zp',
                              **legacy_kwargs) -> int | None:
     """Insert or update an observation target.  Returns target_id."""

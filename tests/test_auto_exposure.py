@@ -129,3 +129,26 @@ def test_the_newest_detection_becomes_the_newest_mag(monkeypatch):
     assert ae.latest_mag(res) == res['latest']['mag']
     typed = ae.compute('SN 2026x', 47.9, -2.0, typed_mag='18', detections=[])
     assert typed['latest'] is None and ae.latest_mag(typed) is None
+
+
+def test_without_its_own_snr_a_target_gets_10_when_19_mag_or_brighter_else_20(monkeypatch):
+    seen = []
+    monkeypatch.setattr(ae, 'best_time', lambda ra, dec, day=None: (datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc), 64.6))
+    monkeypatch.setattr(ae, 'plan_filter', lambda cf, ra, dec, mag, snr, when: seen.append(snr) or _p(65))
+    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=DET, now_mjd=NOW)          # brightest 16.73
+    assert res['snr'] == 10 and res['snr_auto'] and res['brightest'] == 16.73 and set(seen) == {10}
+    faint = [{**d, 'mag': d['mag'] + 3} for d in DET]                                   # brightest 19.73
+    res = ae.compute('AT2026afqt', 47.9, -2.0, detections=faint, now_mjd=NOW)
+    assert res['snr'] == 20 and res['snr_auto']
+    edge = [{**d, 'mag': 19.0} for d in DET]
+    assert ae.compute('X', 47.9, -2.0, detections=edge, now_mjd=NOW)['snr'] == 10      # 19.0 itself: S/N 10
+    res = ae.compute('AT2026afqt', 47.9, -2.0, snr=30, detections=faint, now_mjd=NOW)   # the target's own S/N wins
+    assert res['snr'] == 30 and not res['snr_auto']
+
+
+def test_target_form_snr_blank_is_automatic(monkeypatch):
+    from app.blueprints.private_area import targets
+    monkeypatch.setattr(ae, 'latest_detections', lambda name: [])
+    for blank in ('', None, 'auto'):
+        assert targets._auto_exposure({'auto_exposure': False, 'auto_snr': blank}, 'SLT')[1] is None
+    assert targets._auto_exposure({'auto_exposure': False, 'auto_snr': '15'}, 'SLT')[1] == 15

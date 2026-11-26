@@ -27,6 +27,15 @@ BANDS = (('up', 'u', 'Sloan_u'), ('gp', 'g', 'Sloan_g'), ('rp', 'r', 'Sloan_r'),
 ALL = tuple(sf for sf, _, _ in BANDS)
 PLANS = {'all': ALL, 'gr': ('gp', 'rp'), 'r': ('rp',)}       # the shorter plans offered when the pick runs long
 DEFAULT_SNR = 20.0
+# S/N when the target sets none (the user's rule, 2026-11-26): from its brightest magnitude in the plan
+AUTO_SNR_SPLIT_MAG = 19.0
+AUTO_SNR_BRIGHT, AUTO_SNR_FAINT = 10.0, 20.0     # brightest <= 19 mag: S/N 10; fainter: S/N 20
+
+
+def auto_snr(mags):
+    """(S/N, brightest magnitude) for a target without its own S/N, from the magnitudes its plan uses."""
+    brightest = min(m['mag'] for m in mags.values())
+    return (AUTO_SNR_BRIGHT if brightest <= AUTO_SNR_SPLIT_MAG else AUTO_SNR_FAINT), brightest
 MAX_TOTAL_S = 30 * 60          # a plan longer than this at the telescope is flagged
 # Shortest frame per filter: CASTOR answers for the target alone and would give a 17 mag target 60 s or less, but
 # template subtraction needs field stars to align on. What SLT frames did, 2026-11-15..25 auto photometry: z TS
@@ -241,12 +250,13 @@ WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot 
        'below_horizon': 'not above the horizon tonight'}
 
 
-def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=None, detections=None, now_mjd=None):
-    """The target's plan for tonight for the filters picked (choice). Raises NoMagnitude when there is nothing to
-    compute it from."""
-    snr = float(snr or DEFAULT_SNR)
+def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None):
+    """The target's plan for tonight for the filters picked (choice), at its own S/N or (snr None) auto_snr's.
+    Raises NoMagnitude when there is nothing to compute it from."""
     picked = selection(choice)
     mags = magnitudes(name, typed_mag, detections, now_mjd)
+    snr_auto = not snr
+    snr, brightest = (auto_snr(mags) if snr_auto else (float(snr), min(m['mag'] for m in mags.values())))
     when, alt = best_time(ra, dec, day)
     filters, notes = {}, []
     for sf, b, cf in BANDS:
@@ -264,7 +274,7 @@ def compute(name, ra, dec, typed_mag=None, snr=DEFAULT_SNR, choice=None, day=Non
     if alt < MIN_ALT_DEG:
         notes.append(f'highest tonight only {alt:.0f}°')
     return {'computed_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'night': (day or datetime.now(TZ8).date()).isoformat(),
-            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'selected': picked, 'total_s': total,
+            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'snr_auto': snr_auto, 'brightest': round(brightest, 2), 'selected': picked, 'total_s': total,
             'filters': filters, 'options': options, 'plan': plan, 'too_long': total > MAX_TOTAL_S,
             'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes, 'latest': _latest(mags)}
 
@@ -287,7 +297,7 @@ def latest_mag(result):
 def apply(target, **kw):
     """Compute and store one target's plan (its filters follow it). Returns the result, or raises NoMagnitude."""
     from app.db.obs import set_auto_exposure_result
-    res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or DEFAULT_SNR,
+    res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or None,
                   target.get('auto_plan'), **kw)
     set_auto_exposure_result(target['id'], res, filters=res['plan'] or None, mag=latest_mag(res))
     return res
