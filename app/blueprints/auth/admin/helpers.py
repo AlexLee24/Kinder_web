@@ -79,28 +79,3 @@ def _start_claimed_task(status: dict, target, **thread_kwargs) -> None:
     except Exception:
         status['running'] = False
         raise
-
-# ===============================================================================
-# SCHEDULED JOBS STATUS
-# ===============================================================================
-
-# (label, schedule_desc, trigger_type, trigger_kwargs)
-_SCHEDULED_JOBS = {
-    'daily_backup':                 ('Daily Backup',              'Daily 03:00 UTC',  'cron',     {'hour': 3,  'minute': 0}),
-    'daily_phot_fetch':             ('Inbox Photometry Fetch',    'Daily 03:30 UTC',  'cron',     {'hour': 3,  'minute': 30}),
-    'daily_auto_exposure':          ('Auto Exposure (CASTOR)',    'Daily 04:00 UTC',  'cron',     {'hour': 4,  'minute': 0}),
-    'daily_target_mag_update':      ('Update Target Mags',        'Daily 05:00 UTC',  'cron',     {'hour': 5,  'minute': 0}),
-    'daily_retire_stale_followups': ('Retire Stale Follow-ups',   'Daily 05:30 UTC',  'cron',     {'hour': 5,  'minute': 30}),
-    'daily_host_redshift_sync':     ('Host Redshift Sync',        'Daily 06:00 UTC',  'cron',     {'hour': 6,  'minute': 0}),
-    'pipeline_fits_cleanup':        ('Pipeline FITS Cleanup',     'Every 60 min',     'interval', {'minutes': 60}),
-    'db_monitor':                   ('DB Health Monitor',         'Every 10 min',     'interval', {'minutes': 10}),
-    'db_recycle':                   ('DB Connection Recycle',     'Every 30 min',     'interval', {'minutes': 30}),
-    'detect_page_prewarm':          ('Detect Page Prewarm',       'Every 30 min',     'interval', {'minutes': 30}),
-    'daily_detect_followups':       ('DETECT: Follow-up re-screen', 'Daily 04:00 UTC', 'cron',     {'hour': 4,  'minute': 0}),
-    'lab_calendar_lulin_sync':      ('Lab Calendar: Lulin sync',  'Every 6 h',        'interval', {'minutes': 360}),
-    'lab_trigger_reminder':         ('Trigger duty reminder',     'Every 5 min (after Lulin sunset)', 'interval', {'minutes': 5}),
-    'lab_calendar_reminders':       ('Lab Calendar reminders',    'Every 1 min',      'interval', {'minutes': 1}),
-    'lab_trigger_duty_check':       ('Trigger duty: Friday check', 'Fridays 02:00 UTC', 'cron',     {'hour': 2,  'minute': 0}),
-    'lab_trigger_duty_eve_am':      ('Trigger duty: eve check (1)', 'Sundays 02:00 UTC', 'cron',    {'hour': 2,  'minute': 0}),
-    'lab_trigger_duty_eve_pm':      ('Trigger duty: eve check (2)', 'Sundays 08:00 UTC', 'cron',    {'hour': 8,  'minute': 0}),
-}

@@ -55,10 +55,10 @@ def overview():
 TNS_RUNS = (
     ('detect_tns_hourly', 'TNS hourly import', None, (15, 45)),     # auto_tns_download._HOURLY_MINUTES
     ('detect_tns_daily', 'TNS daily import', (1, 4, 12), (0,)),     # auto_tns_download._DAILY_HOURS
-    ('detect_follow_up', 'Follow-up re-screen', (4,), (0,)),        # scheduler: daily_detect_followups
+    ('detect_follow_up', 'Follow-up re-screen', (3,), (30,)),       # routine morning_chain (step 2, after the photometry fetch)
 )
-LSST_HOURLY = (None, (25,))         # scheduler: lsst_watch
-LSST_SWEEP = ((14,), (30,))         # scheduler: lsst_daily_sweep
+LSST_HOURLY = (None, (25,))         # routine lsst_watch
+LSST_SWEEP = ((14,), (30,))         # routine lsst_daily_sweep
 LSST_STALE_HOURS = 30               # no new LSST object at ALeRCE for this long: a whole night is missing
 
 

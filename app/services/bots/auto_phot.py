@@ -50,6 +50,11 @@ def _run(nights=BACKFILL_NIGHTS):
             lines.append('Stopped.')
             break
     ae = ''
+    try:                                   # the new points are in transient.photometry: Daily Trigger magnitudes now,
+        from app.services.photometry.phot_scheduler import update_target_mags   # not at tomorrow's morning chain
+        update_target_mags()
+    except Exception as e:
+        log.warning('target magnitude update failed: %s', e)
     try:                                   # last night's points are in: tonight's auto exposure plans from them
         from app.services.planning.auto_exposure import update_all
         ae = update_all()

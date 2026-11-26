@@ -1,5 +1,5 @@
 {% extends '_base.html' %}
-{#- Admin hub (/admin): four in-page tabs (admin.js showTab; URL hash #overview … #operations; #access goes to /admin/permissions), picked from the
+{#- Admin hub (/admin): three in-page tabs (admin.js showTab; URL hash #overview … #groups (#operations goes to /admin/routines); #access goes to /admin/permissions), picked from the
     admin menu (_admin_nav.html, left column). Each tab starts with a page head: title, one line, its own actions. -#}
 {% block title %}Admin Panel - Kinder{% endblock %}
 {% block head %}
@@ -171,11 +171,11 @@
             </section>
 
             <div class="kw-grid-2 ov-grid">
-                <!-- Scheduled jobs -->
+                <!-- Routines (admin.js → /admin/routines/status) -->
                 <section class="kw-panel">
                     <div class="kw-panel-head">
-                        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Scheduled jobs</h2>
-                        <span id="scheduledJobsUpdated" class="kw-panel-meta"></span>
+                        <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Routines</h2>
+                        <a href="/admin/routines" class="kw-btn kw-btn-sm kw-btn-ghost">All routines →</a>
                     </div>
                     <div id="scheduledJobsGrid" class="sj-list">
                         <div class="kw-muted">Loading…</div>
@@ -425,105 +425,6 @@
         </section>
 
         <!-- ═══════════════ Access ═══════════════ -->
-        <!-- ═══════════════ Operations ═══════════════ -->
-        <section id="operations-tab" class="tab-content" data-tab="operations" aria-label="Operations">
-            <header class="kw-page-head adm-head">
-                <div><h1>Jobs</h1><p>Run scheduled jobs by hand. Each one also runs on its own schedule.</p></div>
-            </header>
-
-            <div class="ops-grid">
-                <article class="kw-panel op-card">
-                    <div class="op-head">
-                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
-                        <div><h3>TNS sync</h3><span class="kw-chip">Auto · :15 / :45 hourly · 01:00 UTC daily</span></div>
-                    </div>
-                    <p>Download the TNS public object list by hand, or auto-snooze stale Inbox objects.</p>
-                    <div class="op-actions">
-                        <button id="tnsDlHrBtn" class="kw-btn kw-btn-sm kw-btn-tinted" onclick="runTnsHourly()">{{ ic_play }} Hourly</button>
-                        <span class="op-inline">
-                            <button id="tnsDlDailyBtn" class="kw-btn kw-btn-sm kw-btn-tinted" onclick="runTnsDaily()">{{ ic_play }} Daily</button>
-                            <input type="date" id="tnsDailyDate" title="Leave empty for yesterday" aria-label="Daily file date">
-                        </span>
-                        <button id="tnsSnoozeBtn" class="kw-btn kw-btn-sm" onclick="runTnsSnooze()">Auto-snooze</button>
-                    </div>
-                    <span id="tnsTaskStatus" class="settings-status"></span>
-                </article>
-
-                <article class="kw-panel op-card">
-                    <div class="op-head">
-                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M4 16l5-6 4 3 7-8"/></svg></span>
-                        <div><h3>Inbox photometry fetch</h3><span class="kw-chip">Auto · daily 09:00 UTC+8</span></div>
-                    </div>
-                    <p>Fetch photometry for every Inbox object.</p>
-                    <div class="op-actions">
-                        <button id="runPhotFetchBtn" onclick="runPhotometryFetch()" class="kw-btn kw-btn-sm kw-btn-tinted">{{ ic_play }} Run now</button>
-                    </div>
-                    <span id="photFetchStatus" class="settings-status"></span>
-                </article>
-
-                <article class="kw-panel op-card">
-                    <div class="op-head">
-                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M11 8v3"/><path d="M11 14h.01"/></svg></span>
-                        <div><h3>Missing photometry</h3><span class="kw-chip">Auto · hourly</span></div>
-                    </div>
-                    <p>Fetch photometry only for Inbox objects that have no data points yet.</p>
-                    <div class="op-actions">
-                        <button id="runMissingPhotBtn" onclick="runMissingPhotFetch()" class="kw-btn kw-btn-sm kw-btn-tinted">{{ ic_play }} Run now</button>
-                    </div>
-                    <span id="missingPhotStatus" class="settings-status"></span>
-                </article>
-
-                <article class="kw-panel op-card">
-                    <div class="op-head">
-                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
-                        <div><h3>Target magnitudes</h3><span class="kw-chip">Auto · daily 05:00</span></div>
-                    </div>
-                    <p>Look up the latest magnitude for every active observation target.</p>
-                    <div class="op-actions">
-                        <button id="runTargetMagBtn" onclick="runUpdateTargetMags()" class="kw-btn kw-btn-sm kw-btn-tinted">{{ ic_play }} Run now</button>
-                    </div>
-                    <span id="targetMagStatus" class="settings-status"></span>
-                </article>
-
-                <article class="kw-panel op-card">
-                    <div class="op-head">
-                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></span>
-                        <div><h3>Database maintenance</h3><span class="kw-chip">Backup · daily</span></div>
-                    </div>
-                    <p>Check user ↔ group consistency and take a backup right now.</p>
-                    <div class="op-actions">
-                        <button class="kw-btn kw-btn-sm" onclick="checkDataConsistency()">Check consistency</button>
-                        <button class="kw-btn kw-btn-sm kw-btn-tinted" onclick="triggerManualBackup()">Backup now</button>
-                    </div>
-                </article>
-
-                <article class="kw-panel op-card">
-                    <div class="op-head">
-                        <span class="op-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>
-                        <div><h3>Document images</h3><span class="kw-chip">Manual</span></div>
-                    </div>
-                    <p>Remove uploaded images that no Markdown document references any more.</p>
-                    <div class="op-actions">
-                        <button onclick="cleanDocumentImages()" class="kw-btn kw-btn-sm kw-btn-danger">Clean unused images</button>
-                    </div>
-                    <span id="cleanImagesStatus" class="settings-status"></span>
-                </article>
-            </div>
-
-            <!-- Pipeline: where AutoPhOT lives on this server, read only (admin.js → /admin/pipeline/settings) -->
-            <section class="kw-panel pipe-settings" id="pipelineSettings" aria-labelledby="h-pipeline">
-                <div class="kw-panel-head">
-                    <h2 id="h-pipeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10"/><path d="M4 12h16"/><path d="M4 18h7"/><circle cx="17" cy="6" r="2"/><circle cx="14" cy="18" r="2"/></svg>Pipeline · AutoPhOT</h2>
-                    <a href="/pipeline" class="kw-btn kw-btn-sm kw-btn-ghost">Open Pipeline →</a>
-                </div>
-                <p class="kw-panel-desc">AutoPhOT is always the copy in this repository (<code>app/vendor/autophot</code>, updated with <code>scripts/sync_autophot.sh</code>) with its own Python (<code>scripts/pipeline/setup_autophot.sh</code>). The workspaces and calibrated-frame folders come from <code>kinder.env</code> (<code>AUTOPHOT_RUNS</code>, <code>CALIBRATED_SCIENCE_DIR</code>). AutoPhOT gets none of Kinder's secrets.</p>
-                <div class="pipe-rows" id="pipelineRows"><p class="pipe-loading">Loading…</p></div>
-                <div class="pipe-foot">
-                    <button type="button" class="kw-btn kw-btn-sm" id="pipelineCheck">Check</button>
-                    <span id="pipelineStatus" class="settings-status" role="status" aria-live="polite"></span>
-                </div>
-            </section>
-        </section>
     </div>
     </div>
 {% endblock %}

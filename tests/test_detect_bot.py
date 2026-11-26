@@ -50,7 +50,7 @@ def test_next_slot_of_each_trigger():
     now = datetime(2026, 11, 1, 16, 17, tzinfo=timezone.utc)
     nxt = {name: _next_slot(now, h, m) for _, name, h, m in TNS_RUNS}
     assert nxt == {'TNS hourly import': '2026-11-01T16:45:00+00:00', 'TNS daily import': '2026-11-02T01:00:00+00:00',
-                   'Follow-up re-screen': '2026-11-02T04:00:00+00:00'}
+                   'Follow-up re-screen': '2026-11-02T03:30:00+00:00'}
     assert _next_slot(now, *LSST_HOURLY) == '2026-11-01T16:25:00+00:00'
     assert _next_slot(now, *LSST_SWEEP) == '2026-11-02T14:30:00+00:00'
 

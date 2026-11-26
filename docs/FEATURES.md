@@ -79,7 +79,7 @@ Kinder（Logo → /）
 │     ├── Profile                   /profile                        需登入                                  → 01
 │     └── Log Out                   /logout                                                                → 01
 ├── Manage ▾（僅 is_admin）
-│     ├── Admin Panel               /admin（#overview #users #groups #access #operations）  僅 admin       → 02
+│     ├── Admin Panel               /admin（#overview #users #groups；#access → /admin/permissions，#operations → /admin/routines）  僅 admin       → 02
 │     ├── Users & API keys          /admin#users                    僅 admin                                → 02
 │     ├── Groups                    /admin#groups                   僅 admin                                → 02
 │     ├── Push                      /admin/push                     僅 admin                                → 02
@@ -148,37 +148,31 @@ Kinder（Logo → /）
 
 ---
 
-## 5. 背景工作速查（詳見 `docs/features/09_background_jobs.md`）
+## 5. 背景工作速查（Routines；詳見 `app/services/jobs/routines.py`）
 
-只有取得檔案鎖 `app/log/.background_jobs.lock` 的那個行程會跑背景工作（gunicorn 多 worker 時只有一個）。`DEBUG=True` 時 APScheduler job 與常駐執行緒全部停用，只有 NIST 譜線快取仍會在啟動時重建。**注意**：`BackgroundScheduler` 未指定時區，cron 以主機時區觸發，但程式註解與管理頁全標 UTC。
+只有取得檔案鎖 `app/log/.background_jobs.lock` 的那個行程會跑背景工作（gunicorn 多 worker 時只有一個）。`DEBUG=True` 時全部停用，只有 NIST 譜線快取仍會在啟動時重建。所有排程都登記在 `routines.ROUTINES`（排程器與 **Admin › Routines** `/admin/routines` 共用同一份），觸發時間是 UTC（`BackgroundScheduler(timezone='UTC')`），頁面一律顯示成 `12:00 UTC+8 (04:00 UTC+0)`。每個 routine 一次只跑一份（跨 process 的 flock），log 在 `app/log/routines/<id>.log`，最近 20 次執行紀錄在 `app/log/.routine_history.json`；bot 類的 routine 用自己的狀態與 log（Admin › Bots）。串連的步驟依序執行，某一步失敗會記下來，下一步照跑。
 
-| 種類 | 名稱 | 時間 | 做什麼 |
+| 分組 | Routine | 時間 | 做什麼 |
 |---|---|---|---|
-| cron | `daily_backup` | 03:00 | `pg_dump` 整庫到 `app/data/backups/`（保留 15 份）；啟動時也同步跑一次 |
-| cron | `daily_phot_fetch` | 03:30 | 對所有 Inbox 物件跑 `download_phot.process_single_object_workflow`（ZTF / LSST / TNS；ATLAS / PS 自 2026-10-31 移到未追蹤的 `download_phot_backup.py`） |
-| cron | `daily_target_mag_update` | 05:00 | 更新 `obs.targets` 的最新星等（**目前寫到不存在的表，見已知問題**） |
-| cron | `daily_retire_stale_followups` | 05:30 | Follow-up / Snoozed 物件退役成 Finish（**有 bug，見已知問題**） |
-| cron | `daily_host_redshift_sync` | 06:00 | `sync_host_redshifts`：把 DETECT host 的紅移寫回物件 |
-| cron | `daily_detect_followups` | 04:00 | DETECT 重新篩選所有 Follow-up 物件（需 `DETECT_IN_WEB` 啟用） |
-| interval | `db_monitor` | 每 10 分 | 連線池 / `pg_stat_activity` 監控，超標寄 email（硬編碼收件人） |
-| interval | `db_recycle` | 每 30 分 | 關閉池內閒置連線 |
-| interval | `detect_page_prewarm` | 每 30 分 | 預建 DETECT 頁快取（**排程內無 app context，必失敗**；只有啟動那次有效） |
-| 執行緒 | `auto_tns_download` | 每 10 s 輪詢（真 UTC） | 分鐘 15 / 45：下載 TNS 每小時 CSV → 匯入 `transient.objects` → 種發現點光度 → 新物件抓光度 → DETECT → auto snooze（Inbox 超過 15 天 → Snoozed）。01 / 04 / 12 UTC 整點：下載每日檔（今天、昨天、前天）→ 匯入 → DETECT（只新物件）→ auto snooze |
-| 執行緒 | `tns_gap_filler` | 啟動 10 分後每小時 | 找當年 `kinder_id` 缺口，逐一向 TNS API 查詢補入 |
-| 執行緒 | `nist-spec-lines` | 啟動時一次 | 重抓 NIST 24 個離子譜線到 `app/modules/_spectral_lines_cache.json` |
-| 執行緒 | `bot-gcn` | 常駐（Kafka） | GCN circular → Slack；Einstein Probe WXT → `EPt<yymmdd><a…>`、SLT script、鹿林可見度圖 → Slack（鹿林夜間 control room，白天 ToO，另可抄送 `SLACK_CHANNEL_ID_EP_COPY`）+ email + Web Push 給 GREAT Lab 成員（分類 `alerts`）（`app/services/bots/gcn.py`） |
-| interval | `bot_astronote` | 每 5 分 | 新的 TNS AstroNotes → Slack `SLACK_CHANNEL_ID_ALERT` |
-| cron | `bot_obs_log` | 04:00（UTC+8 12:00） | 讀鹿林原始影像 FITS header，最近 15 晚標記為已觀測（`obs.logs`，只改 observed 欄位） |
-| cron | `bot_auto_phot` | 05:30（UTC+8 13:30） | 昨晚（往前 3 晚補跑）Calibrated_Science 的校正影像自動跑 AutoPhOT（不做模板相減，每晚每濾鏡疊圖；名字 EP 開頭的跳過），結果顯示在 Daily Trigger「Last night」，並以 `SLT(AUTO, w/o TS)` / `LOT(AUTO, w/o TS)` 加進 Transient 頁；重跑同一晚會取代舊點（`obs.auto_phot`）；另外每次 deploy / 重啟後 3 分鐘自動補跑前一晚還沒做完的目標（job `auto_phot_startup`） |
-| cron | `lab_trigger_duty_check` | 週五 02:00（台灣 10:00） | 下下週有沒人值班的晚上 → Slack `SLACK_CHANNEL_ID_TRIGGER_DUTY`（預設 C06BT4DALM6）提醒大家去 Lab › Calendar 認領 |
-| interval | `lab_calendar_reminders` | 每 1 分 | Lab Calendar 組內事件開始前提醒 GREAT Lab 成員（通知鈴 + 推播分類 `calendar`）；預設 30 分鐘前，事件可改時間或 No reminder，全天事件從當天 09:00 算；每次發生只送一次（`obs.lab_event_reminders`），晚超過 15 分鐘就略過 |
-| interval | `lab_trigger_reminder` | 每 5 分 | 鹿林日落後推「Trigger duty tonight」給當天 Lab › Calendar 的 Trigger 值班者（每人每晚一次；SLT 已送出就不推；當晚 LOT 關閉時標題加「· SLT only」並說只送 SLT） |
-| interval | `lab_calendar_lulin_sync` | 每 6 小時（啟動時一次） | 鹿林 LOT Google 日曆 → `obs.lab_calendar_events`（source `lulin`），Lab › Calendar 與訂閱 feed 用 |
-| cron / 手動 | `bot_reduction` | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 逐步執行鹿林 reduction pipeline（auto_calibration.sh 的 10 個步驟） |
-| interval / 手動 | `bot_nas_backup` | `NAS_ARCHIVE_INTERVAL_MIN`（60），需設 `NAS_IP` / `NAS_PATH` | 把 reduction 資料夾裡不再需要的資料搬到實驗室 NAS：非本月 / 上月的 raw 夜、30 天以上的 master、60 天沒有新影像的 calibrated 目標（Admin › Bots › NAS backup › Moves 看紀錄） |
-| 手動（管理頁） | TNS hourly / daily 下載、auto-snooze、光度抓取、缺漏光度、目標星等、DETECT run、備份 | – | `/admin/*` 按鈕，各自另起 thread（狀態為 process 內變數） |
+| Photometry & targets | `morning_chain` | 每日 11:30 UTC+8 (03:30 UTC+0) | 依序：Inbox 光度抓取 → DETECT 重篩 Follow-up（需 `DETECT_IN_WEB`）→ DETECT 頁快取 → 目標星等 → SLT auto exposure（CASTOR）→ 退役過期 Follow-up → 宿主紅移同步 |
+| | `auto_phot`（bot） | 每日 13:30 UTC+8 (05:30 UTC+0)；重啟後 3 分鐘補前一晚 | 昨晚校正影像 → AutoPhOT → Daily Trigger / Transient 頁；跑完立即更新目標星等與今晚 auto exposure |
+| TNS & alerts | `tns_hourly` | 每小時 :15、:45 | TNS 每小時檔 → `transient.objects`（新物件抓光度）→ DETECT → auto-snooze → DETECT 頁快取 |
+| | `tns_daily` | 09:00 / 12:00 / 20:00 UTC+8 (01:00 / 04:00 / 12:00 UTC+0) | 今天、昨天、前天的每日檔 → 匯入 → DETECT（只新物件） |
+| | `tns_gap_fill` | 每小時 :35 | 補當年 `kinder_id` 缺口（TNS object API，間隔 60 s） |
+| | `lsst_watch` / `lsst_daily_sweep` | 每小時 :25 / 22:30 UTC+8 (14:30 UTC+0) | ALeRCE LSST（`LSST_WATCH=0` 關閉） |
+| | `astronote`（bot） | 每 5 分 | 新的 TNS AstroNotes → Slack |
+| | `gcn_watchdog` | 每 1 分 | GCN / EP listener 掛掉或卡住就重啟（listener 本身是常駐執行緒 `bot-gcn`） |
+| Lulin data | `obs_log`（bot） | 每日 12:15 UTC+8 (04:15 UTC+0) | 鹿林原始影像 header → `obs.logs` observed（最近 15 晚） |
+| | `reduction`（bot） | `REDUCTION_HOUR_UTC`（未設 = 只手動） | 鹿林 reduction pipeline |
+| | `nas_backup`（bot） | `NAS_ARCHIVE_INTERVAL_MIN`（60），需 `NAS_IP` / `NAS_PATH` | 舊資料搬到 NAS |
+| Lab calendar | `lab_calendar_tick` | 每 1 分 | 組內事件提醒 + 鹿林日落後「Trigger duty tonight」 |
+| | `lab_trigger_duty` | 週五 10:00、週日 10:00 / 16:00 UTC+8 | 值班空缺 → Slack（週五看下下週，週日看明天開始的那週；各只發一次） |
+| | `lulin_calendar_sync` | 每 6 小時（啟動時若超過 6 小時也跑） | 鹿林 LOT Google 日曆 → Lab › Calendar |
+| Database & housekeeping | `daily_backup` | 每日 11:00 UTC+8 (03:00 UTC+0)；啟動時若今天還沒有 | `pg_dump` 到 `app/data/backups/`；Run now 會強制重做 |
+| | `db_maintenance` | 每 10 分 | 連線檢查（超標寄信）；每第 3 次順便關閉閒置連線 |
+| | `housekeeping` | 每小時 | 關閉超過 3 天的 Daily Trigger 目標刪除；Pipeline 7 天以上的 FITS 刪除 |
 
-工作狀態記錄在 `app/log/.job_status.json`（只寫已完成項目），管理頁 `/admin/scheduled-jobs-status` 讀取。
+手動工具（Admin › Routines › Manual tools）：指定日期的 TNS 每日檔、auto-snooze、只抓 Inbox 光度、缺漏光度、只更新目標星等、清理文件圖片。
 
 ---
 
@@ -371,7 +365,10 @@ Blueprint 對照章節：basic/auth/api→01、admin/web_log/database_status→0
 | `/admin/run-missing-phot-fetch` | POST | `admin.run_missing_phot_fetch` | 02 |
 | `/admin/run-photometry-fetch` | POST | `admin.run_photometry_fetch` | 02 |
 | `/admin/run-update-target-mags` | POST | `admin.run_update_target_mags` | 02 |
-| `/admin/scheduled-jobs-status` | GET | `admin.scheduled_jobs_status` | 02 |
+| `/admin/routines` | GET | `admin.routines_page` | 02 |
+| `/admin/routines/status` | GET | `admin.routines_status` | 02 |
+| `/admin/routines/<rid>/log` | GET | `admin.routine_log` | 02 |
+| `/admin/routines/<rid>/run` | POST | `admin.routine_run` | 02 |
 | `/admin/settings/save` | POST | `admin.save_settings` | 02 |
 | `/admin/sources/all` | GET | `admin.all_sources` | 02 |
 | `/admin/sources/search` | GET | `admin.search_sources` | 02 |
@@ -631,7 +628,7 @@ Blueprint 對照章節：basic/auth/api→01、admin/web_log/database_status→0
 | `/admin/detect-status` | 403 | 403 | 403 | 200 |
 | `/admin/log` | 302 | 302 | 200 | 200 |
 | `/admin/photometry-fetch-status` | 403 | 403 | 403 | 200 |
-| `/admin/scheduled-jobs-status` | 403 | 403 | 403 | 200 |
+| `/admin/routines/status` | 403 | 403 | 403 | 200 |
 | `/admin/sources/all` | 403 | 403 | 403 | 200 |
 | `/admin/sources/search` | 403 | 403 | 403 | 200 |
 | `/admin/tns-task-status` | 403 | 403 | 403 | 200 |

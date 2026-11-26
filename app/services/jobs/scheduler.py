@@ -1,4 +1,4 @@
-"""Background jobs: APScheduler cron/interval jobs plus the long-running daemon threads.
+"""Background jobs: the routines (APScheduler) plus the GCN listener thread.
 
 Started once per server by ``create_app()`` (``start_background_jobs(app)``). A file lock
 (``app/log/.background_jobs.lock``) guarantees that only one process runs them when
@@ -11,44 +11,14 @@ restart never leaves an old worker holding the lock.
 With ``DEBUG=True`` every job and daemon thread is disabled — only the NIST spectral-line
 cache warm-up still runs.
 
-Job overview (times are UTC — ``BackgroundScheduler`` is created with ``timezone='UTC'``
-so the schedule does not depend on the host's local timezone; the admin panel labels
-these jobs in UTC too):
+Every scheduled job is a routine in ``app.services.jobs.routines.ROUTINES`` (schedule, steps, the admin page's
+Admin › Routines): this module only registers them and runs the start-up work. Triggers are UTC
+(``BackgroundScheduler(timezone='UTC')``); the page shows every time as ``12:00 UTC+8 (04:00 UTC+0)``.
 
-    daily_backup                   03:00      pg_dump -> app/data/backups/
-    daily_phot_fetch               03:30      photometry for every Inbox object
-    daily_detect_followups         04:00      DETECT re-screens every Follow-up object
-    daily_auto_exposure            04:00      Daily Trigger SLT auto-exposure targets: tonight's CASTOR plan (UTC+8 12:00;
-                                              again after bot_auto_phot has measured last night)
-    daily_target_mag_update        05:00      refresh obs.targets magnitudes
-    daily_retire_stale_followups   05:30      Follow-up/Snoozed -> Finish
-    prune_off_targets              hourly     Daily Trigger targets switched off > 3 days (not kept) -> deleted
-    daily_host_redshift_sync       06:00      host redshift -> transient.objects
-    db_monitor                     every 10m  pool / pg_stat_activity check + email alert
-    db_recycle                     every 30m  close idle pooled connections
-    detect_page_prewarm            every 30m  rebuild DETECT page cache
-    lsst_watch                     hh:25      new ALeRCE LSST objects vs Lens/DESI + LSST light curves of TNS objects
-    lsst_daily_sweep               14:30      re-read the last 1.5 days of LSST objects (late ingests)
-    lab_calendar_lulin_sync        every 6h   Lulin LOT Google calendar -> Lab › Calendar (also once at start)
-    lab_trigger_reminder           every 5m   after Lulin sunset: push "Trigger duty tonight" to today's duty (once)
-    lab_calendar_reminders         every 1m   Lab Calendar events: remind the members (bell + push) before they start
-    lab_trigger_duty_check         Fri 02:00  week after next has a night without Trigger duty -> Slack (UTC+8 10:00)
-    lab_trigger_duty_eve_am/_pm    Sun 02:00 / 08:00  the duty week starting tomorrow is still open -> Slack again (UTC+8 10:00 / 16:00)
-
-    gcn_watchdog                   every 1m   GCN listener thread dead or not beating for 5 min -> start a new one
-    bot_astronote                  every 5m   new TNS AstroNotes -> Slack
-    bot_obs_log                    04:00      Lulin raw frames -> obs.logs (last 15 nights)
-    bot_reduction                  REDUCTION_HOUR_UTC (unset: by hand only)  reduction pipeline
-    bot_nas_backup                 every NAS_ARCHIVE_INTERVAL_MIN (60)  old reduction data -> lab NAS (only with NAS_* set)
-    bot_auto_phot                  05:30      last night's calibrated frames -> AutoPhOT -> Daily Trigger / Transient pages
-    auto_phot_startup              3 min after the background jobs start (deploy / restart): last night, what is not done yet
-
-Daemon threads: ``auto_tns_download`` (hourly/daily TNS sync, real UTC clock),
-``tns_gap_filler`` (hourly kinder_id gap fill), ``nist-spec-lines`` (one-shot),
-``bot-gcn`` (GCN circulars + Einstein Probe alerts). The lab bots (app/services/bots) record their own state
-for Admin › Bots instead of using ``_tracked``; BOTS_DISABLED switches single bots off.
-Every job is wrapped by ``_tracked`` so its last run is visible in the admin panel via
-``app.services.jobs.job_status``.
+Start-up (this process holds the lock, not DEBUG): today's backup when there is none yet, the Lulin calendar when the
+last sync is over 6 h old, the DETECT page cache, a TNS import whose slot passed less than 10 min ago, the GCN
+listener, a first AstroNote poll and the observation-log backfill, and auto photometry of last night 3 min later.
+BOTS_DISABLED switches single bots off; LSST_WATCH=0 the LSST routines.
 """
 import fcntl
 import logging
@@ -64,26 +34,6 @@ from app.paths import LOG_DIR
 logger = logging.getLogger(__name__)
 
 _bg_lock_fd = None  # keep the fd alive for the lifetime of the process (holds the lock)
-
-
-def _tracked(job_id, fn):
-    from app.services.jobs import job_status as _job_status
-
-    def wrapper(*args, **kwargs):
-        _job_status.record_start(job_id)
-        try:
-            result = fn(*args, **kwargs)
-        except Exception as _exc:
-            _job_status.record_finish(job_id, False, str(_exc)[:200])
-            raise
-        # Several jobs report failure by returning {'error': ...} instead of raising.
-        if isinstance(result, dict) and result.get('error'):
-            _job_status.record_finish(job_id, False, str(result['error'])[:200])
-        else:
-            _job_status.record_finish(job_id, True)
-        return result
-    wrapper.__name__ = fn.__name__
-    return wrapper
 
 
 def acquire_background_lock() -> bool:
@@ -160,45 +110,29 @@ def exit_soon_after_sigterm():
 
 
 # Scheduler jobs that are not named bot_<id> but belong to a bot of Admin › Bots (the page shows their next run)
-_BOT_OF_JOB = {'daily_detect_followups': 'detect'}
+_BOT_OF_JOB = {'morning_chain': 'detect'}
 
 
-def _add_bot_jobs(scheduler):
-    """Lab bots on a schedule (app/services/bots); each records its own state for Admin › Bots."""
-    from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+def _bot_of(job_id):
+    return _BOT_OF_JOB.get(job_id) or (job_id[4:] if job_id.startswith('bot_') else None)
 
-    from app.services import bots
-    from app.services.bots import astronote, nas_backup, obs_log, reduction
-    from app.services.bots import auto_phot as auto_phot_bot
+
+def _watch_runs(scheduler):
+    """After every run: the bot's next run for Admin › Bots and every job's next run for Admin › Routines (both are
+    read by any gunicorn worker, the scheduler only lives in this one)."""
+    from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
+
     from app.services.bots import status as bot_status
+    from app.services.jobs import routines
 
-    off = bots.disabled()
-    if 'gcn' not in off:
-        from app.services.bots import gcn
-        scheduler.add_job(gcn.watchdog, 'interval', minutes=1, id='gcn_watchdog')   # not bot_*: no next run on the page
-    if 'astronote' not in off:
-        scheduler.add_job(astronote.run, 'interval', minutes=5, id='bot_astronote')
-    if 'obs_log' not in off:
-        scheduler.add_job(obs_log.run, 'cron', hour=4, minute=0, id='bot_obs_log')     # 12:00 UTC+8
-    if 'reduction' not in off and reduction.hour_utc() is not None:
-        scheduler.add_job(reduction.run, 'cron', hour=reduction.hour_utc(), minute=0, id='bot_reduction')
-    if 'auto_phot' not in off:
-        scheduler.add_job(auto_phot_bot.run, 'cron', hour=5, minute=30, id='bot_auto_phot')   # 13:30 UTC+8
-        # and once a few minutes after every start (a deploy, a restart): last night's targets that are not done yet.
-        # Already measured ones are skipped, so restarting again costs nothing. Not bot_*: no "next run" on the page.
-        from datetime import datetime, timedelta, timezone
-        scheduler.add_job(auto_phot_bot.run, 'date', run_date=datetime.now(timezone.utc) + timedelta(minutes=3),
-                          kwargs={'nights': 1}, id='auto_phot_startup', misfire_grace_time=3600)
-    if 'nas_backup' not in off and nas_backup.configured():
-        scheduler.add_job(nas_backup.run, 'interval', minutes=nas_backup.interval_min(), id='bot_nas_backup')
-
-    def note_next_run(ev):
-        bot_id = _BOT_OF_JOB.get(ev.job_id) or (ev.job_id[4:] if ev.job_id.startswith('bot_') else None)
+    def on_event(ev):
+        bot_id = _bot_of(ev.job_id)
         if bot_id:
             job = scheduler.get_job(ev.job_id)
             if job and job.next_run_time:
                 bot_status.update(bot_id, next_run=job.next_run_time.isoformat(timespec='seconds'))
-    scheduler.add_listener(note_next_run, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+        routines.save_next_runs(scheduler)
+    scheduler.add_listener(on_event, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR | EVENT_JOB_MISSED)
 
 
 def _start_bots(scheduler):
@@ -212,7 +146,7 @@ def _start_bots(scheduler):
     for bot_id in off:
         bot_status.update(bot_id, state='disabled')
     for job in scheduler.get_jobs():
-        bot_id = _BOT_OF_JOB.get(job.id) or (job.id[4:] if job.id.startswith('bot_') else None)
+        bot_id = _bot_of(job.id)
         if bot_id and job.next_run_time:
             bot_status.update(bot_id, next_run=job.next_run_time.isoformat(timespec='seconds'))
     if 'gcn' not in off:
@@ -221,6 +155,14 @@ def _start_bots(scheduler):
         job = scheduler.get_job(f'bot_{bot_id}')
         if job:
             threading.Thread(target=job.func, name=f'startup-bot-{bot_id}', daemon=True).start()
+    if 'auto_phot' not in off:
+        # a few minutes after every start (a deploy, a restart): last night's targets that are not done yet.
+        # Already measured ones are skipped, so restarting again costs nothing.
+        from datetime import datetime, timedelta, timezone
+
+        from app.services.bots import auto_phot
+        scheduler.add_job(auto_phot.run, 'date', run_date=datetime.now(timezone.utc) + timedelta(minutes=3),
+                          kwargs={'nights': 1}, id='auto_phot_startup', misfire_grace_time=3600)
 
 
 def start_background_jobs(app) -> bool:
@@ -236,73 +178,29 @@ def start_background_jobs(app) -> bool:
 
 def _run_background_jobs(app):
     """Register and start all background work (this process holds the lock)."""
-    # The DETECT page cache lives with its blueprint; warming it is the one place a
-    # background job reaches into app.blueprints.
-    from app.blueprints.detect.cache import prewarm_detect_page_cache
-    from app.db import recycle_idle_connections as _db_recycle
-    from app.db.transient import sync_host_redshifts
-    from app.services.astro.spectral_lines import warm_cache_async as _warm_spec_lines
-    from app.services.detect import detect_pipeline as _detect_pipeline
-    from app.services.jobs import scheduler_state as _sched_state
-    from app.services.jobs.backup import run_daily_backup
-    from app.services.jobs.db_monitor import check_and_alert as _db_check_and_alert
-    from app.services.lab_calendar import check_duty_eve as _lab_duty_eve
-    from app.services.lab_calendar import check_duty_weeks as _lab_duty_check
-    from app.services.lab_calendar import send_event_reminders as _lab_event_reminders
-    from app.services.lab_calendar import send_trigger_reminders as _lab_trigger_reminders
-    from app.services.lab_calendar import sync_lulin as _lab_calendar_sync_lulin
-    from app.services.lsst import alerts as _lsst_alerts
-    from app.services.photometry.phot_scheduler import (
-        fetch_inbox_photometry,
-        retire_stale_followups,
-        update_target_mags,
-    )
-    from app.services.pipeline.autophot import cleanup_expired as _pipeline_cleanup
-    from app.services.planning.auto_exposure import update_all as _auto_exposure_update
-    from app.services.jobs.target_cleanup import prune_off_targets as _prune_off_targets
-    from app.services.tns.auto_tns_download import start_auto_tns_downloader
-    from app.services.tns.tns_gap_filler import start_gap_filler
+    from apscheduler.executors.pool import ThreadPoolExecutor
 
-    log_dir = str(LOG_DIR)
-    _scheduler = BackgroundScheduler(daemon=True, timezone='UTC')
+    from app.services.astro.spectral_lines import warm_cache_async as _warm_spec_lines
+    from app.services.jobs import routines
+    from app.services.jobs import scheduler_state as _sched_state
+
+    # Long routines (gap filler, AutoPhOT, TNS daily, the morning chain) must not hold up the 1-minute ones.
+    _scheduler = BackgroundScheduler(daemon=True, timezone='UTC', executors={'default': ThreadPoolExecutor(20)})
     _sched_state.scheduler = _scheduler
     if not config.DEBUG:
-        _scheduler.add_job(_tracked('daily_backup', run_daily_backup),                        'cron', hour=3, minute=0,  id='daily_backup')
-        _scheduler.add_job(_tracked('daily_phot_fetch', fetch_inbox_photometry),              'cron', hour=3, minute=30, id='daily_phot_fetch')
-        # _scheduler.add_job(fetch_missing_photometry, 'cron', minute=0,                      id='hourly_missing_phot')
-        _scheduler.add_job(_tracked('daily_auto_exposure', _auto_exposure_update),            'cron', hour=4, minute=0,  id='daily_auto_exposure')
-        _scheduler.add_job(_tracked('daily_target_mag_update', update_target_mags),           'cron', hour=5, minute=0,  id='daily_target_mag_update')
-        _scheduler.add_job(_tracked('daily_retire_stale_followups', retire_stale_followups),  'cron', hour=5, minute=30, id='daily_retire_stale_followups')
-        _scheduler.add_job(_tracked('prune_off_targets', _prune_off_targets),                 'interval', hours=1,      id='prune_off_targets')
-        _scheduler.add_job(_tracked('daily_host_redshift_sync', sync_host_redshifts),         'cron', hour=6, minute=0,  id='daily_host_redshift_sync')
-        _scheduler.add_job(_tracked('db_monitor', _db_check_and_alert),                       'interval', minutes=10,   id='db_monitor')
-        _scheduler.add_job(_tracked('db_recycle', _db_recycle),                               'interval', minutes=30,   id='db_recycle')
-        _scheduler.add_job(_tracked('pipeline_fits_cleanup', _pipeline_cleanup),              'interval', minutes=60,   id='pipeline_fits_cleanup')  # Pipeline FITS older than 7 days
-        _scheduler.add_job(_tracked('detect_page_prewarm', prewarm_detect_page_cache),        'interval', minutes=30,   id='detect_page_prewarm', kwargs={'app_obj': app})  # needs the app: no request context in the scheduler thread
-        _scheduler.add_job(_tracked('lab_calendar_lulin_sync', _lab_calendar_sync_lulin),     'interval', hours=6,      id='lab_calendar_lulin_sync')
-        _scheduler.add_job(_tracked('lab_trigger_reminder', _lab_trigger_reminders),         'interval', minutes=5,    id='lab_trigger_reminder')
-        _scheduler.add_job(_tracked('lab_calendar_reminders', _lab_event_reminders),         'interval', minutes=1,    id='lab_calendar_reminders')
-        _scheduler.add_job(_tracked('lab_trigger_duty_check', _lab_duty_check),              'cron', day_of_week='fri', hour=2, minute=0, id='lab_trigger_duty_check')  # 10:00 UTC+8
-        _scheduler.add_job(_tracked('lab_trigger_duty_eve_am', _lab_duty_eve),               'cron', day_of_week='sun', hour=2, minute=0, id='lab_trigger_duty_eve_am', kwargs={'slot': 'am'})  # 10:00 UTC+8
-        _scheduler.add_job(_tracked('lab_trigger_duty_eve_pm', _lab_duty_eve),               'cron', day_of_week='sun', hour=8, minute=0, id='lab_trigger_duty_eve_pm', kwargs={'slot': 'pm'})  # 16:00 UTC+8
-        if _detect_pipeline.ENABLED:
-            # DETECT re-screens every Follow-up object once a day (M from the latest light
-            # curve, host against the latest catalogue); hourly runs hang off the TNS import.
-            _scheduler.add_job(_tracked('daily_detect_followups', _detect_pipeline.run_followups), 'cron', hour=4, minute=0, id='daily_detect_followups')  # after the 03:30 UTC photometry fetch
-        if _lsst_alerts.ENABLED:
-            # :25 = after the :15 TNS import, so new TNS names are there to link to
-            _scheduler.add_job(_tracked('lsst_watch', _lsst_alerts.run_watch),                'cron', minute=25,        id='lsst_watch')
-            _scheduler.add_job(_tracked('lsst_daily_sweep', _lsst_alerts.run_daily_sweep),    'cron', hour=14, minute=30, id='lsst_daily_sweep')  # Chilean night is over by ~11 UTC
-        _add_bot_jobs(_scheduler)
+        added = routines.register(_scheduler, app)
+        routines.tns_startup_catch_up(_scheduler)
+        _watch_runs(_scheduler)
+        logger.info('Routines scheduled: %s', ', '.join(added))
     _scheduler.start()
     if not config.DEBUG:
-        # Start-up backup runs in the background so the server accepts requests immediately
-        # (pg_dump can take minutes).
-        threading.Thread(target=_tracked('daily_backup', run_daily_backup), name='startup-backup', daemon=True).start()
-        threading.Thread(target=_tracked('lab_calendar_lulin_sync', _lab_calendar_sync_lulin), name='startup-lulin-calendar', daemon=True).start()
-        _tracked('detect_page_prewarm', prewarm_detect_page_cache)(prewarm_days=1, refresh_latest=True, force_latest=True, app_obj=app)
-        start_auto_tns_downloader(log_dir=log_dir)
-        start_gap_filler(log_dir=log_dir)
+        routines.save_next_runs(_scheduler)
+        from app.services.lab_calendar import sync_lulin_if_stale
+        # pg_dump skips a database that already has today's file, so a restart costs nothing; it runs in a thread
+        # so the server accepts requests immediately.
+        threading.Thread(target=routines.run, args=('daily_backup',), name='startup-backup', daemon=True).start()
+        sync_lulin_if_stale(max_age_hours=6)
+        routines.prewarm_detect_page()
         _start_bots(_scheduler)
     else:
         print("DEBUG mode: all background scheduled jobs are disabled.")

@@ -472,26 +472,33 @@ def fill_year_gaps(year: int, delay: float = 60.0) -> int:
     return filled
 
 
-# ---- Daemon loop ----
+# ---- One pass (routine tns_gap_fill, hourly at :35 UTC) / daemon loop ----
+
+def run_once(delay: float = 60.0):
+    """Fill this year's gaps (and last year's in early January). Returns how many were filled."""
+    now = datetime.now(timezone.utc)
+    years = [now.year]
+    # Early January: late reports can still be assigned last year's names.
+    if now.month == 1 and now.day <= 14:
+        years.insert(0, now.year - 1)
+    filled = 0
+    for year in years:
+        if _stop_event.is_set():
+            break
+        filled += fill_year_gaps(year, delay=delay) or 0
+    return f"{filled} filled"
+
 
 def _main_loop(delay: float = 60.0):
-    # Initial delay: let bulk downloads (at :15 and :45) settle
+    """Stand-alone loop (the web app runs run_once as the routine tns_gap_fill instead)."""
     logger.info("Gap filler waiting 10 min before first scan…")
     _stop_event.wait(600)  # 10-minute grace period
 
     while not _stop_event.is_set():
-        now = datetime.now(timezone.utc)
-        years = [now.year]
-        # Early January: late reports can still be assigned last year's names.
-        if now.month == 1 and now.day <= 14:
-            years.insert(0, now.year - 1)
-        for year in years:
-            if _stop_event.is_set():
-                break
-            try:
-                fill_year_gaps(year, delay=delay)
-            except Exception:
-                logger.exception("Unexpected error in gap filler loop (year %d)", year)
+        try:
+            run_once(delay=delay)
+        except Exception:
+            logger.exception("Unexpected error in gap filler loop")
         # Wait up to 1 hour, but wake immediately if stop is requested
         _stop_event.wait(3600)
 

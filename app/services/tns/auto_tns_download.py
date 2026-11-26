@@ -750,8 +750,24 @@ def _run_daily(slot, now):
             work_csv.unlink(missing_ok=True)
 
 
+def run_hourly_now():
+    """Routine tns_hourly (:15 and :45 UTC): the import of the latest hourly slot."""
+    now = datetime.now(timezone.utc)
+    slot = _latest_hourly_slot(now)
+    _run_hourly(slot, now)
+    return f"hourly file {slot:%H}h"
+
+
+def run_daily_now():
+    """Routine tns_daily (01:00, 04:00, 12:00 UTC): today's, yesterday's and the day before's daily files."""
+    now = datetime.now(timezone.utc)
+    slot = _latest_daily_slot(now)
+    _run_daily(slot, now)
+    return f"daily files up to {slot:%Y-%m-%d}"
+
+
 def main():
-    """Daemon loop. Each job remembers the last slot it ran for and runs once as soon as
+    """Stand-alone daemon loop (the web app runs the routines tns_hourly / tns_daily instead). Each job remembers the last slot it ran for and runs once as soon as
     a newer slot is due, so a slot is not lost when the loop was busy (a daily import
     can take longer than a minute) and a backlog is caught up only once."""
     logger.info("Bot started at %s", datetime.now(timezone.utc))

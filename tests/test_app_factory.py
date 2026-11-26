@@ -58,7 +58,8 @@ def test_route_count_is_stable(app):
     # 434 with Stop for one auto photometry row (/api/daily_trigger/auto_phot/<id>/stop).
     # 436 with the unlisted CASTOR check (/castor/snr_check and its /lock).
     # 440 with the unlisted New SLT page (/new_slt, its /lock, /new_slt/sheet and /new_slt/sheet/ops).
-    assert sum(1 for _ in app.url_map.iter_rules()) == 440
+    # 443 with Admin › Routines (/admin/routines, its /status, /<rid>/log and /<rid>/run) in place of /admin/scheduled-jobs-status.
+    assert sum(1 for _ in app.url_map.iter_rules()) == 443
 
 
 def test_duplicate_rules_keep_precedence(app):
@@ -80,6 +81,8 @@ def test_every_app_module_imports():
     failures = []
     for mod in pkgutil.walk_packages(app_pkg.__path__, prefix='app.'):
         if mod.name.startswith('app.vendor'):
+            continue
+        if mod.name == 'app.main':      # builds the app WITH its background jobs (gunicorn entry point): never in a test
             continue
         try:
             importlib.import_module(mod.name)

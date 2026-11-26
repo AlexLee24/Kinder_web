@@ -1,0 +1,102 @@
+{% extends '_base.html' %}
+{#- Admin › Routines: every scheduled job (app/services/jobs/routines.py) — a 24 h strip of today's fixed times, one row
+    per routine (schedule, next run, last run, Run now) with its steps, recent runs and log, and the manual tools that
+    used to be the Jobs tab. admin_routines.js polls /admin/routines/status every 15 s and follows an open log every 3 s.
+    Every time on the page reads 12:00 UTC+8 (04:00 UTC+0). -#}
+{% block title %}Routines - Kinder{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/admin_shell.css') }}">{% endblock %}
+{% block body_class %}kw-admin-body{% endblock %}
+
+{% block content %}
+<div class="adm-layout">
+{% include '_admin_nav.html' %}
+<div class="kw-page admin-page bot-page rt-page" id="rtPage">
+    <header class="kw-page-head">
+        <div><h1>Routines</h1><p>Everything Kinder runs on its own: when, what it did last and its log. Times read UTC+8 (UTC+0).</p></div>
+        <div class="kw-page-actions">
+            <span class="sys-pill" id="rtState"><i></i><b>Loading…</b></span>
+            <button type="button" class="kw-btn kw-btn-sm" id="rtRefresh">Refresh</button>
+        </div>
+    </header>
+
+    {% if debug %}
+    <div class="bot-note">DEBUG mode: nothing runs on its own here. Run now still works, and does the real thing.</div>
+    {% endif %}
+
+    <section class="kw-panel rt-day" aria-labelledby="rtDayT">
+        <div class="kw-panel-head">
+            <h2 id="rtDayT">Today's fixed times</h2>
+            <span class="kw-panel-meta" id="rtNow"></span>
+        </div>
+        <div class="rt-strip" id="rtStrip" aria-hidden="true"></div>
+        <ol class="rt-agenda" id="rtAgenda"></ol>
+        <p class="rt-foot">Not on the strip: every 1 / 5 / 10 min and hourly routines (TNS at :15 / :45, LSST at :25, gap filler at :35).</p>
+    </section>
+
+    <div id="rtGroups">
+        {% for g in groups %}
+        <section class="kw-panel rt-group">
+            <div class="kw-panel-head"><h2>{{ g }}</h2></div>
+            <div class="rt-list">
+                {% for r in routines if r.group == g %}
+                <div class="rt-row"><span class="bot-dot is-{{ 'busy' if r.running else r.state }}"></span>
+                    <div class="kw-row-main"><b>{{ r.name }}</b><small>{{ r.when }}</small></div></div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+
+    <section class="kw-panel rt-tools" aria-labelledby="rtToolsT">
+        <div class="kw-panel-head"><h2 id="rtToolsT">Manual tools</h2></div>
+        <p class="kw-panel-desc">One-off actions that are not on a schedule, or one step of a routine on its own.</p>
+        <div class="rt-tool-list">
+            <div class="rt-tool">
+                <div class="kw-row-main"><b>TNS daily file of a date</b><small>Import one day's TNS file (empty: yesterday), then DETECT.</small></div>
+                <div class="rt-tool-act"><input type="date" id="rtTnsDate" aria-label="Daily file date"><button type="button" class="kw-btn kw-btn-sm kw-btn-tinted" data-tool="tns-daily">Import</button></div>
+            </div>
+            <div class="rt-tool">
+                <div class="kw-row-main"><b>Auto-snooze</b><small>Snooze stale Inbox objects now (also runs after every TNS import).</small></div>
+                <div class="rt-tool-act"><button type="button" class="kw-btn kw-btn-sm" data-tool="tns-snooze">Run</button></div>
+            </div>
+            <div class="rt-tool">
+                <div class="kw-row-main"><b>Inbox photometry only</b><small>Step 1 of the morning chain on its own.</small></div>
+                <div class="rt-tool-act"><button type="button" class="kw-btn kw-btn-sm" data-tool="phot-fetch">Run</button></div>
+            </div>
+            <div class="rt-tool">
+                <div class="kw-row-main"><b>Missing photometry</b><small>Only Inbox objects that have no data points yet.</small></div>
+                <div class="rt-tool-act"><button type="button" class="kw-btn kw-btn-sm" data-tool="missing-phot">Run</button></div>
+            </div>
+            <div class="rt-tool">
+                <div class="kw-row-main"><b>Target magnitudes only</b><small>Latest magnitude of every active Daily Trigger target.</small></div>
+                <div class="rt-tool-act"><button type="button" class="kw-btn kw-btn-sm" data-tool="target-mags">Run</button></div>
+            </div>
+            <div class="rt-tool">
+                <div class="kw-row-main"><b>Document images</b><small>Delete uploaded images no Markdown document uses any more.</small></div>
+                <div class="rt-tool-act"><button type="button" class="kw-btn kw-btn-sm kw-btn-danger" data-tool="clean-images">Clean</button></div>
+            </div>
+        </div>
+        <div class="rt-tool-out" id="rtToolOut" role="status" aria-live="polite" hidden></div>
+    </section>
+
+    <!-- Pipeline: where AutoPhOT lives on this server, read only (/admin/pipeline/settings) -->
+    <section class="kw-panel pipe-settings" id="pipelineSettings" aria-labelledby="h-pipeline">
+        <div class="kw-panel-head">
+            <h2 id="h-pipeline">Pipeline · AutoPhOT</h2>
+            <a href="/pipeline" class="kw-btn kw-btn-sm kw-btn-ghost">Open Pipeline →</a>
+        </div>
+        <p class="kw-panel-desc">AutoPhOT is always the copy in this repository (<code>app/vendor/autophot</code>) with its own Python. The workspaces and calibrated-frame folders come from <code>kinder.env</code> (<code>AUTOPHOT_RUNS</code>, <code>CALIBRATED_SCIENCE_DIR</code>).</p>
+        <div class="pipe-rows" id="pipelineRows"><p class="pipe-loading">Loading…</p></div>
+        <div class="pipe-foot">
+            <button type="button" class="kw-btn kw-btn-sm" id="pipelineCheck">Check</button>
+            <span id="pipelineStatus" class="settings-status" role="status" aria-live="polite"></span>
+        </div>
+    </section>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="application/json" id="rtInitial">{{ {'routines': routines, 'groups': groups|list, 'debug': debug} | tojson }}</script>
+<script src="{{ url_for('static', filename='js/admin_routines.js') }}"></script>
+{% endblock %}

@@ -124,11 +124,13 @@ function clearSearch() {
 }
 
 // ── Tabs: one section per tab, addressable as /admin#users (DB Status / Web Log link here) ──
-const ADMIN_TABS = ['overview', 'users', 'groups', 'operations'];
+const ADMIN_TABS = ['overview', 'users', 'groups'];
 
 function initAdminTabs() {
     // The Access tab moved to its own page (Admin › Permissions); keep old links working.
     if (location.hash === '#access') { location.replace('/admin/permissions'); return; }
+    // The Jobs tab became its own page (Admin › Routines).
+    if (location.hash === '#operations') { location.replace('/admin/routines'); return; }
     document.querySelectorAll('.admin-nav [data-tab]').forEach(tab => {
         tab.addEventListener('click', e => {
             e.preventDefault();
@@ -1362,149 +1364,6 @@ function toggleOpenRegistration(checkbox) {
     });
 }
 
-function runPhotometryFetch() {
-    const btn = document.getElementById('runPhotFetchBtn');
-    const statusEl = document.getElementById('photFetchStatus');
-
-    btn.disabled = true;
-    statusEl.innerHTML = 'Starting...';
-
-    fetch('/admin/run-photometry-fetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
-            showNotification(data.message, 'success');
-            // Poll until done
-            const poll = setInterval(() => {
-                fetch('/admin/photometry-fetch-status')
-                    .then(r => r.json())
-                    .then(s => {
-                        if (!s.running) {
-                            clearInterval(poll);
-                            btn.disabled = false;
-                            const total = s.total || 0;
-                            const success = s.success || 0;
-                            const failed = s.failed || 0;
-                            const noData = total - success - failed;
-                            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} Done — ${total} objects: ${success} fetched, ${noData} no data, ${failed} failed</span>`;
-                        } else {
-                            const cur = s.current || 0;
-                            const tot = s.total || '?';
-                            statusEl.innerHTML = `Running... ${cur}/${tot}`;
-                        }
-                    });
-            }, 3000);
-        } else {
-            btn.disabled = false;
-            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} ${escapeHtml(data.message || data.error)}</span>`;
-            showNotification(data.message || data.error, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        btn.disabled = false;
-        statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} An error occurred</span>`;
-        showNotification('Error starting photometry fetch', 'error');
-    });
-}
-
-function runUpdateTargetMags() {
-    const btn = document.getElementById('runTargetMagBtn');
-    const statusEl = document.getElementById('targetMagStatus');
-
-    btn.disabled = true;
-    statusEl.innerHTML = 'Starting...';
-
-    fetch('/admin/run-update-target-mags', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(r => r.json())
-    .then(data => {
-        btn.disabled = false;
-        if (data.success) {
-            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
-            showNotification(data.message, 'success');
-        } else {
-            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${escapeHtml(data.message || data.error)}</span>`;
-            showNotification(data.message || data.error, 'error');
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        btn.disabled = false;
-        statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} An error occurred</span>`;
-        showNotification('Error starting target mag update', 'error');
-    });
-}
-
-function runMissingPhotFetch() {
-    const btn = document.getElementById('runMissingPhotBtn');
-    const statusEl = document.getElementById('missingPhotStatus');
-
-    btn.disabled = true;
-    statusEl.innerHTML = 'Starting...';
-
-    fetch('/admin/run-missing-phot-fetch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            statusEl.innerHTML = `<span style="color:#98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
-            showNotification(data.message, 'success');
-            btn.disabled = false;
-        } else {
-            btn.disabled = false;
-            statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} ${escapeHtml(data.message || data.error)}</span>`;
-            showNotification(data.message || data.error, 'error');
-        }
-    })
-    .catch(err => {
-        console.error(err);
-        btn.disabled = false;
-        statusEl.innerHTML = `<span style="color:#e06c75;">${ICONS.delete} An error occurred</span>`;
-        showNotification('Error starting missing phot check', 'error');
-    });
-}
-
-function cleanDocumentImages() {
-    if (!confirm('Are you sure you want to clean up unused uploaded images? This will permanently delete images not referenced in any markdown documents.')) {
-        return;
-    }
-    
-    const statusEl = document.getElementById('cleanImagesStatus');
-    statusEl.innerHTML = 'Cleaning...';
-    
-    fetch('/admin/documents/clean-images', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            statusEl.innerHTML = `<span style="color: #98c379;">${ICONS.check} ${escapeHtml(data.message)}</span>`;
-            showNotification(data.message, 'success');
-        } else {
-            statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} Error: ${escapeHtml(data.error)}</span>`;
-            showNotification('Failed to clean images: ' + data.error, 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        statusEl.innerHTML = `<span style="color: #e06c75;">${ICONS.delete} An error occurred</span>`;
-        showNotification('Error cleaning images', 'error');
-    });
-}
-
-// Handle Group Requests
 async function handleGroupRequest(email, groupName, action) {
     if (action === 'reject' && !confirm('Are you sure you want to reject this request?')) {
         return;
@@ -1553,75 +1412,6 @@ async function changeUserRole(userEmail, newRole) {
         showNotification('An error occurred: ' + error.message, 'error');
         setTimeout(() => location.reload(), 1500);
     }
-}
-
-// ============ TNS Manual Operations ============
-const _TNS_BTNS = ['tnsDlHrBtn', 'tnsDlDailyBtn', 'tnsSnoozeBtn'];
-
-function _tnsSetBtns(disabled) {
-    _TNS_BTNS.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
-}
-
-function _tnsPoll() {
-    const statusEl = document.getElementById('tnsTaskStatus');
-    const poll = setInterval(() => {
-        fetch('/admin/tns-task-status')
-            .then(r => r.json())
-            .then(s => {
-                if (!s.running) {
-                    clearInterval(poll);
-                    _tnsSetBtns(false);
-                    statusEl.innerHTML = '<span style="color:#98c379;">' + ICONS.check + ' ' + escapeHtml(s.message) + '</span>';
-                } else {
-                    statusEl.textContent = 'Running...';
-                }
-            })
-            .catch(() => { clearInterval(poll); _tnsSetBtns(false); });
-    }, 3000);
-}
-
-function runTnsHourly() {
-    const statusEl = document.getElementById('tnsTaskStatus');
-    _tnsSetBtns(true);
-    statusEl.textContent = 'Starting...';
-    fetch('/admin/tns-download-hourly', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
-            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + escapeHtml(data.message) + '</span>'; showNotification(data.message, 'error'); }
-        })
-        .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
-}
-
-function runTnsDaily() {
-    const statusEl = document.getElementById('tnsTaskStatus');
-    const dateVal = document.getElementById('tnsDailyDate').value;
-    _tnsSetBtns(true);
-    statusEl.textContent = 'Starting...';
-    fetch('/admin/tns-download-daily', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dateVal ? { date: dateVal } : {})
-    })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
-            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + escapeHtml(data.message) + '</span>'; showNotification(data.message, 'error'); }
-        })
-        .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
-}
-
-function runTnsSnooze() {
-    const statusEl = document.getElementById('tnsTaskStatus');
-    _tnsSetBtns(true);
-    statusEl.textContent = 'Starting...';
-    fetch('/admin/tns-auto-snooze', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) { showNotification(data.message, 'success'); _tnsPoll(); }
-            else { _tnsSetBtns(false); statusEl.innerHTML = '<span style="color:#e06c75;">' + escapeHtml(data.message) + '</span>'; showNotification(data.message, 'error'); }
-        })
-        .catch(e => { _tnsSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
 
 // ============================================================
@@ -1755,118 +1545,50 @@ function runDetect(kind) {
         .catch(e => { _detectSetBtns(false); showNotification('Error: ' + e.message, 'error'); });
 }
 
+// Overview › Routines: the ones that failed, then the next five to run (times "12:00 UTC+8 (04:00 UTC+0)").
 async function _loadScheduledJobs() {
     try {
-        const res = await fetch('/admin/scheduled-jobs-status');
+        const res = await fetch('/admin/routines/status');
         if (!res.ok) return;
         const data = await res.json();
-        _renderScheduledJobs(data.jobs || []);
-        const el = document.getElementById('scheduledJobsUpdated');
-        if (el) el.textContent = 'Updated ' + new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+        _renderScheduledJobs(data.routines || []);
     } catch (e) { /* network error — ignore */ }
 }
 
 function _fmtJobTime(iso) {
     if (!iso) return '—';
-    return new Date(iso).toLocaleString('en-GB', {
-        month: 'short', day: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-        timeZone: 'UTC'
-    }) + ' UTC';
+    const u = new Date(iso);
+    const t8 = new Date(u.getTime() + 8 * 3600 * 1000);
+    const p = (n) => String(n).padStart(2, '0');
+    const hm = (d) => p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+    return hm(t8) + ' UTC+8 (' + hm(u) + ' UTC+0)';
 }
 
 function _timeAgo(iso) {
     if (!iso) return '';
-    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (min < 1)  return 'just now';
-    if (min < 60) return min + 'm ago';
-    const h = Math.floor(min / 60);
-    if (h < 24)   return h + 'h ago';
-    return Math.floor(h / 24) + 'd ago';
+    const min = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+    const a = Math.abs(min);
+    if (a < 1) return 'now';
+    const t = a < 60 ? a + ' min' : a < 1440 ? Math.round(a / 60) + ' h' : Math.round(a / 1440) + ' d';
+    return min > 0 ? 'in ' + t : t + ' ago';
 }
 
-function _renderScheduledJobs(jobs) {
+function _renderScheduledJobs(routines) {
     const grid = document.getElementById('scheduledJobsGrid');
     if (!grid) return;
-
-    if (!jobs.length) {
-        grid.innerHTML = '<div class="kw-empty">No scheduled jobs found.</div>';
-        return;
-    }
-
-    grid.innerHTML = jobs.map(j => {
-        let stateHtml, lastHtml;
-
-        if (j.is_running) {
-            stateHtml = `<div class="sj-state running"><span class="sj-dot"></span>Running</div>`;
-        } else {
-            const nextTxt = j.next_run
-                ? 'Wait for next run at ' + _fmtJobTime(j.next_run)
-                : 'Not scheduled';
-            stateHtml = `<div class="sj-state">${nextTxt}</div>`;
-        }
-
-        if (!j.last_status) {
-            lastHtml = `<div class="sj-last">Last run: —</div>`;
-        } else if (j.last_status === 'success') {
-            lastHtml = `<div class="sj-last success">Last run: ✓ ${_timeAgo(j.last_run_at)}</div>`;
-        } else {
-            const msg = j.last_message ? ': ' + escapeHtml(j.last_message.slice(0, 80)) : '';
-            lastHtml = `<div class="sj-last error">Last run: ✗ Failed${msg}</div>`;
-        }
-
-        return `<div class="sj-card${j.is_running ? ' sj-running' : ''}">
-            <div class="sj-name">${escapeHtml(j.name)}</div>
-            <div class="sj-schedule">${escapeHtml(j.schedule)}</div>
-            ${stateHtml}
-            ${lastHtml}
-        </div>`;
-    }).join('');
+    const failed = routines.filter(r => r.enabled && r.runs && r.runs[0] && r.runs[0].ok === false);
+    const running = routines.filter(r => r.running);
+    const next = routines.filter(r => r.next_run && !r.running && !failed.includes(r))
+        .sort((a, b) => a.next_run.localeCompare(b.next_run)).slice(0, 5);
+    const rows = [];
+    failed.forEach(r => rows.push([r, 'error', 'Failed ' + _timeAgo(r.runs[0].finished_at) + ': ' + (r.runs[0].message || '').slice(0, 80)]));
+    running.forEach(r => rows.push([r, 'running', 'Running']));
+    next.forEach(r => rows.push([r, '', 'Next ' + _fmtJobTime(r.next_run) + ' · ' + _timeAgo(r.next_run)]));
+    if (!rows.length) { grid.innerHTML = '<div class="kw-empty">Nothing scheduled here (DEBUG mode).</div>'; return; }
+    grid.innerHTML = rows.map(([r, cls, txt]) => `<a class="sj-card${cls === 'running' ? ' sj-running' : ''}" href="/admin/routines#${r.id}">
+            <div class="sj-name">${escapeHtml(r.name)}</div>
+            <div class="sj-schedule">${escapeHtml(r.when)}</div>
+            <div class="sj-state${cls === 'running' ? ' running' : ''}">${cls === 'running' ? '<span class="sj-dot"></span>Running' : cls === 'error' ? '' : escapeHtml(txt)}</div>
+            <div class="sj-last${cls === 'error' ? ' error' : ''}">${cls === 'error' ? escapeHtml(txt) : ''}</div>
+        </a>`).join('');
 }
-
-// ── Pipeline · AutoPhOT paths (Operations tab), read only: they come from the repository and kinder.env ──
-(function () {
-    const rows = document.getElementById('pipelineRows');
-    if (!rows) return;
-    const status = document.getElementById('pipelineStatus');
-
-    function node(tag, cls, text) {
-        const n = document.createElement(tag);
-        if (cls) n.className = cls;
-        if (text != null) n.textContent = text;
-        return n;
-    }
-
-    function render(settings, checks) {
-        const byKey = {};
-        (checks || []).forEach(c => { byKey[c.key] = c; });
-        rows.replaceChildren(...settings.map(s => {
-            const c = byKey[s.key];
-            const field = node('div', 'kw-field');
-            const label = node('div', 'pipe-label');
-            label.append(node('span', 'pipe-dot' + (c ? (c.ok ? ' is-ok' : ' is-bad') : '')), node('span', '', s.label));
-            const path = node('code', 'pipe-path', s.used);
-            const note = node('div', 'pipe-note' + (c && !c.ok ? ' is-bad' : ''), s.source + (c ? ' · ' + c.detail : ''));
-            field.append(label, path, note);
-            return field;
-        }));
-    }
-
-    async function load(probe) {
-        status.textContent = probe ? 'Checking…' : '';
-        try {
-            const res = await fetch('/admin/pipeline/settings' + (probe ? '?probe=1' : ''), { credentials: 'same-origin' });
-            const data = await res.json();
-            if (!data.success) throw new Error(data.error || 'Could not load');
-            render(data.settings, data.checks);
-            const bad = data.checks.filter(c => !c.ok).length;
-            status.textContent = probe ? (bad ? bad + ' problem' + (bad > 1 ? 's' : '') + ' found' : 'Ready') : '';
-        } catch (e) {
-            rows.replaceChildren(node('p', 'pipe-note is-bad', 'Could not load the pipeline paths.'));
-            status.textContent = '';
-        }
-    }
-
-    document.getElementById('pipelineCheck').addEventListener('click', () => load(true));
-    load(false);
-})();
