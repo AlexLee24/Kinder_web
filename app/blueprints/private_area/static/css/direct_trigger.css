@@ -79,3 +79,19 @@
     /* Phone: Target gets the whole row so its placeholder is not cut; Mag drops below. */
     .dt-row-name > .dt-name-field { grid-column: 1 / -1; }
 }
+
+/* Phones: tonight's list as one small card per target instead of a table that scrolled sideways and hid
+   Priority and the remove button. Name (and notes) on top with remove at the right; RA / Dec, exposure and
+   priority on the line below. */
+@media (max-width: 640px) {
+    .dt-table thead { display: none; }
+    .dt-table, .dt-table tbody { display: block; }
+    .dt-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px 12px; align-items: start; padding: 12px 14px; }
+    .dt-table tr + tr { border-top: 1px solid var(--kw-hairline); }
+    .dt-table td { display: block; padding: 0; border: 0; min-width: 0; }
+    .dt-table td:nth-child(1) { grid-column: 1 / 3; }
+    .dt-table td:nth-child(5) { grid-column: 3; grid-row: 1; width: auto; }
+    .dt-table td:nth-child(4) { grid-column: 3; grid-row: 2; align-self: center; }
+    .dt-table .dt-note-gl { max-width: none; }
+    .kw-table-wrap:has(> .dt-table) { overflow: visible; }
+}

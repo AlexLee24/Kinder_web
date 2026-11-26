@@ -133,13 +133,13 @@
 {% block bar_left %}
     <a href="{{ url_for('private_area.documents_list') }}" class="kw-btn kw-btn-sm kw-btn-ghost back-link">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-        Back to Documents
+        Back to documents
     </a>
 {% endblock %}
 {% block bar_right %}{% if is_admin %}
     <span class="doc-status" id="docStatusText"></span>
-    <button class="kw-btn kw-btn-sm" id="toggleEditBtn" type="button" {% if not documents_editable %}disabled{% endif %}>Edit Document</button>
-    <button class="kw-btn kw-btn-sm kw-btn-primary" id="saveDocBtn" type="button" style="display:none;" {% if not documents_editable %}disabled{% endif %}>Save Changes</button>
+    <button class="kw-btn kw-btn-sm" id="toggleEditBtn" type="button" {% if not documents_editable %}disabled{% endif %}>Edit document</button>
+    <button class="kw-btn kw-btn-sm kw-btn-primary" id="saveDocBtn" type="button" style="display:none;" {% if not documents_editable %}disabled{% endif %}>Save changes</button>
     <button class="kw-btn kw-btn-sm kw-btn-ghost" id="cancelEditBtn" type="button" style="display:none;" {% if not documents_editable %}disabled{% endif %}>Cancel</button>
 {% endif %}{% endblock %}
 

@@ -76,6 +76,10 @@
     .marshal-body .sort-controls { flex: 1 1 auto; min-width: 0; }
     .marshal-body .sort-controls #sortBy { flex: 1 1 auto; min-width: 0; width: 100%; }
     .marshal-body .sh-pagebar-r .sort-order-btn { width: 44px; min-width: 44px; height: 44px; }
+    /* one control height across the toolbar: field, buttons, view switch and sort list are all 44px */
+    .marshal-search #searchInput, .marshal-search .kw-search { min-height: 44px; }
+    .marshal-body .sort-controls #sortBy { min-height: 44px; }
+    .marshal-page #topPageSizeSelect { min-height: 40px; }
 
     .marshal-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .marshal-kpis .type-stat { display: none; }   /* AT / SN totals: the status tiles say enough on a phone */

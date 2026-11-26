@@ -27,28 +27,28 @@
             <section class="ctrl-section kw-panel">
                 <div class="kw-panel-head"><h2>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/></svg>
-                    Coordinate Input
+                    Coordinate input
                 </h2></div>
                 <div class="ctrl-row">
                     <div class="ctrl-field">
                         <label>RA (hh:mm:ss or deg)</label>
-                        <input type="text" id="input-ra" placeholder="e.g. 12:30:00 or 187.5">
+                        <input type="text" id="input-ra" placeholder="12:30:00">
                     </div>
                     <div class="ctrl-field">
-                        <label>DEC (dd:mm:ss or deg)</label>
-                        <input type="text" id="input-dec" placeholder="e.g. +45:00:00 or 45.0">
+                        <label>Dec (dd:mm:ss or deg)</label>
+                        <input type="text" id="input-dec" placeholder="+45:00:00">
                     </div>
                 </div>
                 <button class="ctrl-btn primary kw-btn kw-btn-primary" onclick="gotoCoordinate()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                    Go to Coordinate
+                    Go to coordinate
                 </button>
             </section>
 
             <section class="ctrl-section kw-panel">
                 <div class="kw-panel-head"><h2>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
-                    Manual Control
+                    Manual control
                 </h2></div>
                 <div class="ctrl-pad">
                     <div class="pad-row">
@@ -72,11 +72,11 @@
             <section class="ctrl-section kw-panel">
                 <div class="kw-panel-head"><h2>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
-                    Quick Presets
+                    Quick presets
                 </h2></div>
                 <div class="preset-grid">
-                    <button class="preset-btn kw-btn kw-btn-sm" onclick="gotoPreset(0, 90)">North Pole</button>
-                    <button class="preset-btn kw-btn kw-btn-sm" onclick="gotoPreset(0, -90)">South Pole</button>
+                    <button class="preset-btn kw-btn kw-btn-sm" onclick="gotoPreset(0, 90)">North pole</button>
+                    <button class="preset-btn kw-btn kw-btn-sm" onclick="gotoPreset(0, -90)">South pole</button>
                     <button class="preset-btn kw-btn kw-btn-sm" onclick="gotoPreset(0, 0)">Equator / 0h</button>
                     <button class="preset-btn kw-btn kw-btn-sm" onclick="gotoPreset(90, 0)">Equator / 6h</button>
                     <button class="preset-btn kw-btn kw-btn-sm" onclick="gotoPreset(83.63, 22.01)">M1 (Crab)</button>
@@ -89,7 +89,7 @@
             <section class="ctrl-section kw-panel">
                 <div class="kw-panel-head"><h2>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                    Current Position
+                    Current position
                 </h2></div>
                 <div class="pos-display">
                     <div class="pos-item">

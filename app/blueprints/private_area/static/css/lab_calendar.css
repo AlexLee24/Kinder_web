@@ -271,8 +271,8 @@
 @media (max-width: 560px) {
     .lc-week { flex-wrap: wrap; gap: 6px 10px; padding: 8px 2px; }
     .lc-week-d { flex: 1 1 100%; }
-    .lc-week-who { flex: 1 1 100%; flex-wrap: nowrap; justify-content: flex-start; text-align: left; }
-    .lc-week-assign { max-width: none; flex: 1 1 auto; }
+    .lc-week-who { flex: 1 1 100%; min-width: 0; flex-wrap: nowrap; justify-content: flex-start; text-align: left; }
+    .lc-week-assign { max-width: none; flex: 1 1 0; min-width: 0; min-height: 44px; }
 }
 .lc-volunteer { border-color: rgba(242, 201, 76, 0.5); color: #F2C94C; }
 

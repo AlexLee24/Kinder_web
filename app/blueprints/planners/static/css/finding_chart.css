@@ -341,3 +341,6 @@
     text-overflow: ellipsis;
 }
 .db-dropdown-msg { padding: 10px 14px; font-size: 0.82rem; color: rgba(255,255,255,0.35); text-align: center; }
+/* the chart area's own Generate: on a phone the page-bar button is a few screens up */
+.fc-generate-here { display: none; margin-top: 12px; }
+@media (max-width: 860px) { .fc-generate-here { display: inline-flex; } }

@@ -10,7 +10,7 @@
 /* ── compose ── */
 .ap-top { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
 @media (max-width: 1000px) { .ap-top { grid-template-columns: minmax(0, 1fr); } .ap-phone { display: none; } }
-.ap-n { float: right; color: var(--kw-text-faint); font-variant-numeric: tabular-nums; }
+.ap-n { float: right; font-size: max(0.75rem, 11px); color: var(--kw-text-faint); font-variant-numeric: tabular-nums; }
 .ap-targets { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; padding: 0; border: 0; }
 .ap-targets legend { margin-bottom: 6px; }
 .ap-target { display: inline-flex; cursor: pointer; }
@@ -65,7 +65,7 @@
 .ap-row.is-open .ap-toggle svg { transform: rotate(180deg); }
 .ap-devs { display: flex; flex-direction: column; gap: 6px; margin: 0 4px 12px 70px; }
 .ap-dev { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--kw-radius-lg); background: var(--kw-card-bg-2); border: 1px solid var(--kw-hairline); }
-.ap-dev-ic { font-size: 1.2rem; }
+.ap-dev-ic { display: inline-flex; color: var(--kw-text-secondary); }
 .ap-dev-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ap-dev-main b { font-size: 0.84rem; font-weight: 600; }
 .ap-dev-main small { font-size: max(0.74rem, 11px); color: var(--kw-text-muted); }

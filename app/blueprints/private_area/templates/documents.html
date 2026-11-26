@@ -80,7 +80,7 @@
 {% block bar_right %}{% if is_admin %}
     <div class="docs-admin-panel" id="docsAdminPanel" data-editable="{{ 'true' if documents_editable else 'false' }}">
         <input class="docs-input" id="newDocumentFilename" type="text" placeholder="new_document.md" aria-label="New document filename">
-        <button class="kw-btn kw-btn-primary kw-btn-sm" id="createDocumentBtn" type="button" {% if not documents_editable %}disabled{% endif %}>Create Document</button>
+        <button class="kw-btn kw-btn-primary kw-btn-sm" id="createDocumentBtn" type="button" {% if not documents_editable %}disabled{% endif %}>Create document</button>
     </div>
 {% endif %}{% endblock %}
 

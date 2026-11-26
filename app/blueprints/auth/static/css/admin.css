@@ -403,10 +403,10 @@ a.sj-card:hover { background: rgba(255, 255, 255, 0.04); }
 .bot-sub b { font-weight: 600; }
 .bot-about { margin: 0; font-size: 0.84rem; line-height: 1.55; color: var(--kw-text-secondary); }
 .bot-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--kw-text-faint); }
-.bot-dot.is-ok { background: var(--kw-color-success); box-shadow: 0 0 8px rgba(48, 209, 88, 0.6); }
-.bot-dot.is-busy { background: var(--kw-color-info); box-shadow: 0 0 8px rgba(100, 210, 255, 0.6); animation: bot-pulse 1.4s ease-in-out infinite; }
+.bot-dot.is-ok { background: var(--kw-color-success); box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.15); }
+.bot-dot.is-busy { background: var(--kw-color-info); box-shadow: 0 0 0 3px rgba(100, 210, 255, 0.15); animation: bot-pulse 1.4s ease-in-out infinite; }
 .bot-dot.is-warn { background: var(--kw-color-warning); }
-.bot-dot.is-bad { background: var(--kw-color-danger); box-shadow: 0 0 8px rgba(255, 69, 58, 0.6); }
+.bot-dot.is-bad { background: var(--kw-color-danger); box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.15); }
 .bot-dot.is-idle, .bot-dot.is-off { background: var(--kw-text-faint); }
 @keyframes bot-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .bot-dot.is-busy { animation: none; } }

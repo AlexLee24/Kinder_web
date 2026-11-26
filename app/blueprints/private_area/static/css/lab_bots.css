@@ -23,10 +23,10 @@
 .lb-last-text.lvl-warn { color: #ffe8a8; }
 
 .lb-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--kw-text-faint); }
-.lb-dot.is-ok { background: var(--kw-color-success); box-shadow: 0 0 8px rgba(48, 209, 88, 0.6); }
-.lb-dot.is-busy { background: var(--kw-color-info); box-shadow: 0 0 8px rgba(100, 210, 255, 0.6); animation: lb-pulse 1.4s ease-in-out infinite; }
+.lb-dot.is-ok { background: var(--kw-color-success); box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.15); }
+.lb-dot.is-busy { background: var(--kw-color-info); box-shadow: 0 0 0 3px rgba(100, 210, 255, 0.15); animation: lb-pulse 1.4s ease-in-out infinite; }
 .lb-dot.is-warn { background: var(--kw-color-warning); }
-.lb-dot.is-bad { background: var(--kw-color-danger); box-shadow: 0 0 8px rgba(255, 69, 58, 0.6); }
+.lb-dot.is-bad { background: var(--kw-color-danger); box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.15); }
 @keyframes lb-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .lb-dot.is-busy { animation: none; } }
 .lb-h-ok { color: #4CD964; }

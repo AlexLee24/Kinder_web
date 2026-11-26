@@ -41,7 +41,7 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <label for="target-name">Object Name</label>
+                    <label for="target-name">Object name</label>
                     <input type="text" id="target-name" placeholder="e.g. TransientName(SN2025wny) or CustomTarget" />
                 </div>
                 <div class="form-group">
@@ -58,7 +58,7 @@
             <section class="kw-panel settings-section">
                 <div class="kw-panel-head"><h2>Survey</h2></div>
                 <div class="form-group">
-                    <label for="survey-select">Image Source</label>
+                    <label for="survey-select">Image source</label>
                     <select id="survey-select">
                         <optgroup label="DSS (Digital Sky Survey)">
                             <option value="DSS2 Red">DSS2 Red</option>
@@ -92,10 +92,10 @@
 
             <!-- Field of View -->
             <section class="kw-panel settings-section">
-                <div class="kw-panel-head"><h2>Field of View</h2></div>
+                <div class="kw-panel-head"><h2>Field of view</h2></div>
                 <div class="mini-tabs">
                     <button class="mini-tab active" data-tab="fov-direct">Direct FOV</button>
-                    <button class="mini-tab" data-tab="fov-camera">Camera Setup</button>
+                    <button class="mini-tab" data-tab="fov-camera">Camera setup</button>
                 </div>
                 <div class="tab-content active" id="fov-direct">
                     <div class="form-group">
@@ -126,8 +126,8 @@
             <section class="kw-panel settings-section">
                 <div class="kw-panel-head"><h2>Other</h2></div>
                 <div class="mini-tabs">
-                    <button class="mini-tab active" data-tab="tab-stars">Star Annotations</button>
-                    <button class="mini-tab" data-tab="tab-slit">Spectrograph Slit</button>
+                    <button class="mini-tab active" data-tab="tab-stars">Star annotations</button>
+                    <button class="mini-tab" data-tab="tab-slit">Spectrograph slit</button>
                 </div>
 
                 <!-- Tab: Star Annotations -->
@@ -204,6 +204,7 @@
                         <polyline points="21 15 16 10 5 21"/>
                     </svg>
                     <p>Set target coordinates and click Generate</p>
+                    <button type="button" class="kw-btn kw-btn-primary fc-generate-here" onclick="document.getElementById('btn-generate').click()">Generate finding chart</button>
                 </div>
                 <img id="chart-image" alt="Generated finding chart" style="display:none;" />
             </div>

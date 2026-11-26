@@ -319,7 +319,7 @@
 {% include '_admin_nav.html' %}
 <div class="kw-page log-page">
     <header class="kw-page-head">
-        <div><h1>Web Log</h1><p>Real-time server log viewer with source, level and text filters.</p></div>
+        <div><h1>Web log</h1><p>Real-time server log viewer with source, level and text filters.</p></div>
     </header>
 
         <!-- Controls -->
@@ -355,7 +355,7 @@
                 <label class="kw-search">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                     <input type="text" id="searchInput" class="search-input"
-                           placeholder="Search… (Ctrl+F)"
+                           placeholder="Search"
                            oninput="onSearchInput()"
                            aria-label="Search log lines">
                 </label>
@@ -368,9 +368,9 @@
                 <input type="checkbox" id="followChk" checked> Follow tail
             </label>
             <div class="log-actions">
-                <button class="ctrl-btn kw-btn kw-btn-tinted" id="streamToggleBtn" onclick="toggleLogStream()" title="Start/stop log reading"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z"/></svg><span>Start Reading</span></button>
+                <button class="ctrl-btn kw-btn kw-btn-tinted" id="streamToggleBtn" onclick="toggleLogStream()" title="Start/stop log reading"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z"/></svg><span>Start reading</span></button>
                 <button class="ctrl-btn kw-btn" onclick="manualRefresh()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Refresh</button>
-                <button class="ctrl-btn-danger kw-btn kw-btn-danger" onclick="copyErrors()" title="Copy all ERROR/WARNING lines to clipboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Copy Errors</span></button>
+                <button class="ctrl-btn-danger kw-btn kw-btn-danger" onclick="copyErrors()" title="Copy all ERROR/WARNING lines to clipboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Copy errors</span></button>
                 <button class="ctrl-btn kw-btn" onclick="clearDisplay()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Clear</button>
             </div>
             <div class="spacer"></div>
@@ -843,7 +843,7 @@
             const icon = streamEnabled
                 ? '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>'
                 : '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L8.5 4.64A1 1 0 0 0 7 5.5z"/></svg>';
-            btn.innerHTML = icon + `<span>${streamEnabled ? 'Stop Reading' : 'Start Reading'}</span>`;
+            btn.innerHTML = icon + `<span>${streamEnabled ? 'Stop reading' : 'Start reading'}</span>`;
             btn.title = streamEnabled ? 'Stop log reading' : 'Start log reading';
         }
 

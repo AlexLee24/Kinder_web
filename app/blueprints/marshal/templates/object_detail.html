@@ -147,7 +147,7 @@
                         <a href="#" class="link-btn" onclick="event.preventDefault(); openNED()">NED</a>
                         <a href="#" class="link-btn" onclick="event.preventDefault(); openDESI()">DESI LS</a>
                         <a href="#" class="link-btn" onclick="event.preventDefault(); openExtinction()">Extinction</a>
-                        <a href="#" class="link-btn" id="copyCoordBtn" onclick="event.preventDefault(); copyCoordinates()" title="Copy RA Dec (sexagesimal and degrees)">Copy Coords</a>
+                        <a href="#" class="link-btn" id="copyCoordBtn" onclick="event.preventDefault(); copyCoordinates()" title="Copy RA Dec (sexagesimal and degrees)">Copy coords</a>
                     </div>
                     
                     {% if session.user and session.user.is_admin %}
@@ -515,7 +515,7 @@
         <div class="panel-card kw-panel perm-panel" id="od-perm">
             <div class="panel-header kw-panel-head">
                 <div class="perm-header-left">
-                    <h3>Data Source Permissions</h3>
+                    <h3>Data source permissions</h3>
                     <div class="perm-tab-group">
                         <button class="perm-tab active" id="permTabPhot" onclick="switchPermTab('phot')">Photometry</button>
                         <button class="perm-tab" id="permTabSpec" onclick="switchPermTab('spec')">Spectroscopy</button>
@@ -523,7 +523,7 @@
                 </div>
                 <div class="perm-header-right">
                     <span id="permSaveStatus" class="perm-save-status perm-save-idle"></span>
-                    <button type="button" class="kw-btn kw-btn-sm perm-refresh-btn" onclick="refreshPermSources()">Refresh Sources</button>
+                    <button type="button" class="kw-btn kw-btn-sm perm-refresh-btn" onclick="refreshPermSources()">Refresh sources</button>
                     <button type="button" class="kw-btn kw-btn-sm perm-save-btn" onclick="savePermissions(false)">Save now</button>
                 </div>
             </div>
@@ -594,7 +594,7 @@
                     <button id="detectImgGenBtn" onclick="generateDetectImages()"
                             style="background:color-mix(in srgb, var(--color-accent) 6%, transparent); border:1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
                                    color:var(--color-accent); border-radius:4px; padding:2px 8px; cursor:pointer;
-                                   font-size:0.78rem;">Generate Chart</button>
+                                   font-size:0.78rem;">Generate chart</button>
                 </div>
                 <span class="close" onclick="closeDetectModal()">&times;</span>
             </div>
@@ -616,7 +616,7 @@
     <div class="modal" id="editPhotometryModal" style="display: none;">
         <div class="modal-content" style="max-width:900px; width:95%;">
             <div class="modal-header">
-                <h3>Edit Photometry Data</h3>
+                <h3>Edit photometry data</h3>
                 <span class="close" onclick="cancelPhotometryEdit()">&times;</span>
             </div>
             <div class="modal-body" style="padding:16px;">
@@ -638,7 +638,7 @@
                     </div>
                     <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
                         <span id="editSelectionCount" style="font-size:0.8rem; color:rgba(255,255,255,0.45);"></span>
-                        <button class="btn btn-secondary" style="padding:3px 10px; font-size:0.8rem;" onclick="deleteSelectedPhotometry()">Delete Selected</button>
+                        <button class="btn btn-secondary" style="padding:3px 10px; font-size:0.8rem;" onclick="deleteSelectedPhotometry()">Delete selected</button>
                     </div>
                 </div>
                 <div id="photometryTableContainer" style="display:flex; flex-direction:column; width:100%;">
@@ -666,7 +666,7 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="cancelPhotometryEdit()">Cancel</button>
                 <button class="btn btn-secondary" onclick="showAddPhotometryForm()">+ Add Point</button>
-                <button class="btn btn-primary" id="photometrySaveBtn" onclick="savePhotometryChanges()">Save Changes</button>
+                <button class="btn btn-primary" id="photometrySaveBtn" onclick="savePhotometryChanges()">Save changes</button>
             </div>
         </div>
     </div>
@@ -675,12 +675,12 @@
     <div class="modal" id="uploadPhotometryModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Upload Photometry Data</h3>
+                <h3>Upload photometry data</h3>
                 <span class="close" onclick="closeUploadModal()">&times;</span>
             </div>
             <div class="modal-body">
                 <div class="upload-instructions">
-                    <h4>Supported Formats</h4>
+                    <h4>Supported formats</h4>
                     <p>Space-separated or comma-separated. With or without a header row. Lines starting with <code>#</code> are ignored.</p>
                     <pre># With header (auto-detected):
 MJD         magnitude  error   filter  telescope
@@ -717,7 +717,7 @@ MJD         magnitude  error   filter  telescope
                 <!-- Column mapping — appears after file is loaded -->
                 <div id="columnMappingSection" style="display: none;">
                     <div class="col-mapping-header">
-                        <h4>Column Mapping</h4>
+                        <h4>Column mapping</h4>
                         <span class="col-mapping-hint">Detected columns from your file — adjust if needed</span>
                     </div>
                     <pre class="file-sample-preview" id="fileSampleDisplay"></pre>
@@ -753,7 +753,7 @@ MJD         magnitude  error   filter  telescope
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeUploadModal()">Cancel</button>
-                <button class="btn btn-primary" id="uploadBtn" onclick="uploadPhotometryData()" disabled>Upload Data</button>
+                <button class="btn btn-primary" id="uploadBtn" onclick="uploadPhotometryData()" disabled>Upload data</button>
             </div>
         </div>
     </div>
@@ -762,7 +762,7 @@ MJD         magnitude  error   filter  telescope
     <div class="modal" id="uploadSpectrumModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Upload Spectroscopy Data</h3>
+                <h3>Upload spectroscopy data</h3>
                 <span class="close" onclick="closeSpectrumUploadModal()">&times;</span>
             </div>
             <div class="modal-body">
@@ -835,7 +835,7 @@ MJD         magnitude  error   filter  telescope
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeSpectrumUploadModal()">Cancel</button>
-                <button class="btn btn-primary" id="spectrumUploadBtn" onclick="submitSpectrumData()" disabled>Upload Spectrum</button>
+                <button class="btn btn-primary" id="spectrumUploadBtn" onclick="submitSpectrumData()" disabled>Upload spectrum</button>
             </div>
         </div>
     </div>
@@ -844,7 +844,7 @@ MJD         magnitude  error   filter  telescope
     <div class="modal" id="downloadPhotometryModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Download Photometry</h3>
+                <h3>Download photometry</h3>
                 <span class="close" onclick="closeDownloadModal()">&times;</span>
             </div>
             <div class="modal-body">
@@ -902,7 +902,7 @@ MJD         magnitude  error   filter  telescope
     <div class="modal" id="addPhotometryModal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Add Photometry Point</h3>
+                <h3>Add photometry point</h3>
                 <span class="close" onclick="closeAddPhotometryModal()">&times;</span>
             </div>
             <div class="modal-body">
@@ -939,7 +939,7 @@ MJD         magnitude  error   filter  telescope
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeAddPhotometryModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="addPhotometryPoint()">Add Point</button>
+                <button class="btn btn-primary" onclick="addPhotometryPoint()">Add point</button>
             </div>
         </div>
     </div>
@@ -999,7 +999,7 @@ MJD         magnitude  error   filter  telescope
                                 <tr style="position:sticky; top:0; background:#1a1a2e; z-index:1; border-bottom:1px solid rgba(255,255,255,0.15);">
                                     <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">#</th>
                                     <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">Name</th>
-                                    <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">Phys Type</th>
+                                    <th style="padding:6px 8px; text-align:left; font-weight:500; color:#aaa;">Phys type</th>
                                     <th style="padding:6px 8px; text-align:right; font-weight:500; color:#aaa;">RA (°)</th>
                                     <th style="padding:6px 8px; text-align:right; font-weight:500; color:#aaa;">Dec (°)</th>
                                     <th style="padding:6px 8px; text-align:right; font-weight:500; color:#aaa;">z</th>

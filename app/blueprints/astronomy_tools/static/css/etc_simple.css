@@ -220,3 +220,6 @@
     .etc-simple-result .kw-kpi { padding: 12px; }
     .etc-simple-table th, .etc-simple-table td { padding: 9px 8px; }
 }
+
+/* phone: the date-time field needs the full width to show its value */
+@media (max-width: 480px) { .etc-simple-when { grid-template-columns: 1fr; } }

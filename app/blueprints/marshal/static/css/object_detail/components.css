@@ -686,7 +686,7 @@
     justify-content: center;
     gap: 8px;
     padding: 12px 18px;
-    background: linear-gradient(135deg, #4ecdc4, #44a08d);
+    background: #4ecdc4;
     color: white;
     border: none;
     border-radius: 25px;
@@ -937,7 +937,7 @@
     justify-content: center;
     gap: 8px;
     padding: 8px 16px;
-    background: linear-gradient(135deg, #4ecdc4, #44a08d);
+    background: #4ecdc4;
     color: white;
     border: none;
     border-radius: 25px;
@@ -952,7 +952,7 @@
 .add-comment-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(76, 205, 196, 0.3);
-    background: linear-gradient(135deg, #52d4cc, #4aa394);
+    background: #52d4cc;
 }
 
 .add-comment-form {
@@ -1167,7 +1167,7 @@
 
 /* Admin badge for admin users */
 .admin-badge {
-    background: linear-gradient(135deg, #ffd700, #ffb347);
+    background: #ffd700;
     color: #333;
     font-size: 11px;
     font-weight: 600;
@@ -1359,27 +1359,27 @@
 }
 
 .status-btn-compact.inbox { 
-    background: linear-gradient(135deg, #5fd363, #4CAF50); 
+    background: #5fd363; 
     color: white; 
 }
 
 .status-btn-compact.followup { 
-    background: linear-gradient(135deg, #ffeaa7, #fdcb6e); 
+    background: #ffeaa7; 
     color: #333; 
 }
 
 .status-btn-compact.finished { 
-    background: linear-gradient(135deg, #55a3ff, #003d82); 
+    background: #55a3ff; 
     color: white; 
 }
 
 .status-btn-compact.snoozed { 
-    background: linear-gradient(135deg, #fd79a8, #e84393); 
+    background: #fd79a8; 
     color: white; 
 }
 
 .status-btn-compact.flag { 
-    background: linear-gradient(135deg, #ff7675, #d63031); 
+    background: #ff7675; 
     color: white; 
 }
 

@@ -241,7 +241,7 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
 /* ── Page-change feedback (js/shell.js): thin bar at the top; on phones also a spinner ── */
 .sh-progress {
     position: fixed; top: env(safe-area-inset-top, 0px); left: 0; height: 2px; width: 0; z-index: 1400;
-    background: var(--color-accent); box-shadow: 0 0 8px var(--color-accent); opacity: 0; pointer-events: none;
+    background: var(--color-accent); opacity: 0; pointer-events: none;
     transition: width 0.25s ease, opacity 0.2s ease;
 }
 .sh-progress.is-on { opacity: 1; }
@@ -434,6 +434,8 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
         select, textarea { font-size: 16px !important; }
         /* 44px touch targets for the shared buttons (segmented switches keep their own size) */
         .kw-btn:not(.pa-action-switch *):not(.kw-seg *) { min-height: 44px; }
+        /* button words at 13px (the small size was 11px, under the 14px body text); Daily Trigger keeps its signed-off sizes */
+        body:not([data-page$="daily_trigger"]) :is(.kw-btn, .kw-btn-sm):not(.pa-action-switch *) { font-size: 13px; }
     }
 }
 

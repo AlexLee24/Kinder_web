@@ -24,6 +24,13 @@
     .sr-f output { float: right; text-transform: none; color: var(--kw-text-secondary); font-variant-numeric: tabular-nums; }
     .sr-f input[type=range] { width: 150px; accent-color: var(--color-accent); }
     .sr-f .kw-select { min-width: 130px; }
+    /* phones: the strip is too tall to stick over the results; two even columns of full-width controls */
+    @media (max-width: 640px) {
+        .sr-ctl { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .sr-f { min-width: 0; }
+        .sr-f input[type=range], .sr-f .kw-select { width: 100%; min-width: 0; }
+        .sr-ctl > :not(.sr-f), .sr-f:has(.sr-checks), .sr-f:has(.kw-select) { grid-column: 1 / -1; }
+    }
     .sr-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
     .sr-checks label { display: inline-flex; gap: 5px; align-items: center; font-size: 0.82rem; color: var(--kw-text-secondary); text-transform: none; letter-spacing: 0; }
     #srPage[data-mode="stf"] .sr-manual, #srPage:not([data-mode="stf"]) .sr-stf { display: none; }

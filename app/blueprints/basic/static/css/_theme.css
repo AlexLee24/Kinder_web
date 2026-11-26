@@ -556,6 +556,10 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-chip-purple { background: rgba(191, 90, 242, 0.15);  color: #D29BF5; }
 .kw-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; min-height: 0; margin-right: -3px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; opacity: 0.7; cursor: pointer; }
 .kw-chip-x:hover { opacity: 1; background: rgba(255, 255, 255, 0.12); }
+/* sub/superscripts (λ, M☉, H₀) stay readable at the 11px floor */
+sub, sup { font-size: max(75%, 11px); }
+/* touch: a 34px hit area around the small × without changing the chip's size */
+@media (pointer: coarse) { .kw-chip-x { position: relative; } .kw-chip-x::after { content: ""; position: absolute; inset: -10px; } }
 
 .kw-avatar {
     width: 36px; height: 36px; flex-shrink: 0;

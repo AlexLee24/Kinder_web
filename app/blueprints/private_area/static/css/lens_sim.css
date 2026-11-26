@@ -71,3 +71,6 @@
 .ls-guide-title { font-size: 1.05rem; font-weight: 600; color: var(--kw-text-white); }
 .ls-guide-text p { font-size: 0.9rem; line-height: 1.65; color: var(--kw-text-secondary); margin: 8px 0 14px; }
 .ls-guide-nav { display: flex; gap: 10px; }
+
+/* phones: inputs are 16px there (no iOS zoom), so the value box needs room for 4.94e+12 */
+@media (max-width: 860px) { .ls-num { width: 108px; } }

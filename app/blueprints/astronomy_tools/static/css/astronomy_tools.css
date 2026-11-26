@@ -189,3 +189,4 @@
 
 /* the settings icon button must not make its panel head taller than the neighbouring one */
 .cosmo-settings-btn { margin: -6px -6px -6px 0; }
+@media (max-width: 860px) { .at-result-box:has(> .at-placeholder:only-child) { min-height: 64px; } }   /* phones: an empty result is a short hint, not a 150px box */

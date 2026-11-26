@@ -125,7 +125,7 @@ function loadLeaderboard() {
             tbody.innerHTML = "";
             
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="3" style="color: #aaa;">No runs yet. Be the first!</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="3" style="color: #aaa;">No runs yet</td></tr>';
                 return;
             }
             
@@ -133,9 +133,6 @@ function loadLeaderboard() {
                 const tr = document.createElement("tr");
                 // Rank formatting
                 let rankText = `${index + 1}`;
-                if (index === 0) rankText = "🥇 " + rankText;
-                else if (index === 1) rankText = "🥈 " + rankText;
-                else if (index === 2) rankText = "🥉 " + rankText;
                 
                 tr.innerHTML = `
                     <td style="color: var(--kw-accent); font-weight: bold;">${rankText}</td>

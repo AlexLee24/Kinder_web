@@ -209,7 +209,7 @@
 
         {% if not listing %}
         <section class="kw-panel"><div class="pl-empty"><b>No results yet</b>Run AutoPhOT and the light curve, figures and tables appear here.
-            <a class="kw-btn kw-btn-sm kw-btn-primary" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}">Go to Run</a></div></section>
+            <a class="kw-btn kw-btn-sm kw-btn-primary" href="{{ url_for('private_area.pipeline_workspace', tid=ap.id, tab='run') }}">Go to run</a></div></section>
         {% else %}
 
         {% if ap.role == 'owner' and not rel %}

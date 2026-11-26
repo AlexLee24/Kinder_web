@@ -1003,7 +1003,7 @@ reporting_group,source_group,status,tags,url</div>
             const block = btn.closest('.api-code');
             const text = block.childNodes[0].textContent.trim();
             navigator.clipboard.writeText(text).then(() => {
-                btn.textContent = 'copied!';
+                btn.textContent = 'Copied';
                 setTimeout(() => btn.textContent = 'copy', 1800);
             });
         }

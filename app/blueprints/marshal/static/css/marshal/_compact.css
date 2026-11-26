@@ -114,19 +114,19 @@
 }
 
 .tag-indicator.object {
-    background: linear-gradient(45deg, var(--inbox-color), #388e3c);
+    background: var(--inbox-color);
 }
 
 .tag-indicator.followup {
-    background: linear-gradient(45deg, var(--followup-color), var(--blue-dark));
+    background: var(--followup-color);
 }
 
 .tag-indicator.finished {
-    background: linear-gradient(45deg, var(--finished-color), var(--orange-dark));
+    background: var(--finished-color);
 }
 
 .tag-indicator.snoozed {
-    background: linear-gradient(45deg, var(--snoozed-color), var(--purple-dark));
+    background: var(--snoozed-color);
 }
 
 /* Compact Action Buttons */

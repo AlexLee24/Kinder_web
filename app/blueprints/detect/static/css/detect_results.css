@@ -355,7 +355,6 @@ body[data-page="detect.detect_results"] .sh-pagebar-l { flex-wrap: wrap; }
     padding: 2px 7px;
     border-radius: 5px;
     font-size: max(0.78em, 11px);
-    font-style: italic;
     white-space: nowrap;
 }
 
@@ -1013,7 +1012,7 @@ kbd {
 .btn-decide kbd { font-size: max(0.72em, 11px); opacity: 0.8; }
 .btn-decide:hover { transform: translateY(-1px); }
 .btn-decide:active { transform: none; }
-.btn-followup { background: rgba(167,139,250,0.18); color: var(--c-followup); border-color: rgba(167,139,250,0.55); box-shadow: 0 0 12px rgba(167,139,250,0.15); }
+.btn-followup { background: rgba(167,139,250,0.18); color: var(--c-followup); border-color: rgba(167,139,250,0.55); }
 .btn-followup:hover { background: rgba(167,139,250,0.32); }
 .btn-done     { background: rgba(100,200,255,0.16); color: var(--c-done); border-color: rgba(100,200,255,0.5); }
 .btn-done:hover { background: rgba(100,200,255,0.3); }
@@ -1167,6 +1166,19 @@ kbd {
     .content-area { padding-left: 14px; padding-right: 14px; }
     .toast { bottom: calc(var(--kw-dock-h, 0px) + 16px + env(safe-area-inset-bottom, 0px)); }
     .verdict-main { flex-direction: column; align-items: flex-start; gap: 8px; }   /* badge above its explanation */
+    /* card head on a phone: the facts use the full width (they were squeezed into a 117px column beside the
+       Check button), badges share one wrapping line, Check + status sit above them */
+    .card-header-bar { flex-direction: column-reverse; align-items: stretch; gap: 10px; }
+    .card-header-actions { justify-content: space-between; }
+    .card-obj-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+    .card-obj-title > a { flex: 1 1 100%; }
+    .card-meta-line { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+    .card-meta-line > span { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+    .card-meta-line > a.kw-chip { justify-self: start; }
+    /* decisions: full-width, same size, in the order they are read */
+    .action-bar { flex-direction: column; align-items: stretch; }
+    .action-bar .action-lead { margin: 0 0 2px; }
+    .action-bar .btn-decide { width: 100%; justify-content: center; min-height: 44px; }
 }
 
 /* Phone: page-bar toggles at the 40px touch size */
@@ -1177,14 +1189,14 @@ kbd {
 /* Lens-catalogue objects: pinned to the top of the queue */
 #summaryTable tbody tr.row-lens td { background: rgba(255, 0, 127, 0.06); }
 #summaryTable tbody tr.row-lens td:first-child { border-left: 3px solid #ff007f; }
-.target-card.card-lens { border-color: rgba(255, 0, 127, 0.55); box-shadow: 0 0 18px rgba(255, 0, 127, 0.18); }
+.target-card.card-lens { border-color: rgba(255, 0, 127, 0.55); }
 
 /* Highlight badges (_detect_badges.html): LENS MATCH = lens catalogue, Lens? = glSN?, SLSN? */
 .hl-row { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 .hl-badge, .hl-badge-sm { display: inline-block; vertical-align: middle; font-weight: 600; white-space: nowrap; border-radius: 999px; }
 .hl-badge { padding: 3px 10px; font-size: max(0.75rem, 11px); }
 .hl-badge-sm { padding: 1px 7px; font-size: max(0.66rem, 11px); }
-.hl-lens { background: linear-gradient(45deg, #ff007f, #ff8c00); color: #fff; box-shadow: 0 0 10px rgba(255, 0, 127, 0.45); }
+.hl-lens { background: rgba(255, 0, 127, 0.18); color: #ff8cc6; border: 1px solid rgba(255, 0, 127, 0.7); }   /* solid tint like SLSN?, no gradient / glow */
 .hl-lens-cand { background: rgba(255, 0, 127, 0.12); color: #ff6fb4; border: 1px dashed rgba(255, 0, 127, 0.7); }
 .hl-slsn { background: rgba(255, 107, 97, 0.14); color: #ff8a80; border: 1px solid rgba(255, 107, 97, 0.65); }
 /* Candidate position (RA, Dec) in the card's candidate table */

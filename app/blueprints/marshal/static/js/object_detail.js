@@ -612,7 +612,7 @@ function _renderDetectChartView() {
             alt="Finder chart"
             style="max-width:100%; border-radius:6px; display:block; margin:0 auto;" />`;
     } else {
-        detectBody.innerHTML = '<div style="color:#555; padding:20px; text-align:center; font-size:0.85rem;">No finder chart yet — click Generate Chart</div>';
+        detectBody.innerHTML = '<div style="color:#555; padding:20px; text-align:center; font-size:0.85rem;">No finder chart yet — click Generate chart</div>';
     }
 }
 
@@ -2222,7 +2222,7 @@ async function savePhotometryChanges() {
     } finally {
         if (saveBtn) {
             saveBtn.disabled = false;
-            saveBtn.textContent = 'Save Changes';
+            saveBtn.textContent = 'Save changes';
         }
     }
 }
@@ -3326,7 +3326,7 @@ function submitSpectrumData() {
     })
     .finally(() => {
         uploadBtn.disabled = false;
-        uploadBtn.textContent = 'Upload Spectrum';
+        uploadBtn.textContent = 'Upload spectrum';
     });
 }
 
@@ -3349,7 +3349,7 @@ function resetUploadModal() {
     if (el.fileDropZone) el.fileDropZone.style.display = 'block';
     if (el.uploadPreview) el.uploadPreview.style.display = 'none';
     if (el.uploadError) el.uploadError.style.display = 'none';
-    if (el.uploadBtn) { el.uploadBtn.disabled = true; el.uploadBtn.textContent = 'Upload Data'; }
+    if (el.uploadBtn) { el.uploadBtn.disabled = true; el.uploadBtn.textContent = 'Upload data'; }
     if (el.columnMappingSection) el.columnMappingSection.style.display = 'none';
     if (el.uploadProgressSection) el.uploadProgressSection.style.display = 'none';
     window.rawFileLines = null;
@@ -3890,7 +3890,7 @@ async function uploadPhotometryData() {
         }
     } catch (err) {
         showNotification('Upload failed: ' + err.message, 'error');
-        if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = 'Upload Data'; }
+        if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = 'Upload data'; }
         if (progressSection) progressSection.style.display = 'none';
     }
 }
@@ -4534,7 +4534,7 @@ function createEditModal() {
                     <form id="editObjectForm">
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="editObjectName">Object Name</label>
+                                <label for="editObjectName">Object name</label>
                                 <input type="text" id="editObjectName" readonly>
                                 <div class="form-help">Object name cannot be changed</div>
                             </div>
@@ -4575,7 +4575,7 @@ function createEditModal() {
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeEditModal()" id="editCancelBtn">Cancel</button>
                     <button class="btn btn-primary" onclick="submitEditObject()" id="editSubmitBtn">
-                        ${ICONS.save} Save Changes
+                        ${ICONS.save} Save changes
                     </button>
                 </div>
             </div>
@@ -4726,7 +4726,7 @@ function submitEditObject() {
         // Re-enable submit button
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.textContent = '💾 Save Changes';
+            submitBtn.textContent = 'Save changes';
         }
     });
 }
@@ -5738,7 +5738,7 @@ function renderPermTable() {
     const sources = _permSources[type];
 
     if (!sources || sources.length === 0) {
-        container.innerHTML = '<div class="perm-empty">No data sources found. Upload data first, then click "Refresh Sources".</div>';
+        container.innerHTML = '<div class="perm-empty">No data sources found. Upload data first, then click "Refresh sources".</div>';
         return;
     }
 

@@ -87,7 +87,7 @@
 .count-split { display: flex; gap: 6px; }
 .result-link.newest.no-match { cursor: default; color: var(--kw-text-muted); background: rgba(255,255,255,0.02); border-color: var(--kw-border); }
 .result-link.newest.no-match .count-badge { background: #666; color: #ccc; }
-.result-link.newest.lens-match { border-color: #ff007f; box-shadow: 0 0 15px rgba(255, 0, 127, 0.2); }
+.result-link.newest.lens-match { border-color: #ff007f; }
 .result-link.disabled {
     display: block; padding: 24px; text-align: center;
     border-radius: var(--kw-radius-lg); background: var(--kw-card-bg-2); border: 1px solid var(--kw-hairline);
@@ -116,9 +116,8 @@
 
 /* Lens match (data highlight, not the UI accent) */
 .lens-badge, .lens-badge-small {
-    background: linear-gradient(45deg, #ff007f, #ff8c00);
-    color: white; font-weight: 600;
-    box-shadow: 0 0 10px rgba(255, 0, 127, 0.45);
+    background: rgba(255, 0, 127, 0.18); border: 1px solid rgba(255, 0, 127, 0.7);   /* same as the Lens match badge */
+    color: #ff8cc6; font-weight: 600;
 }
 .lens-badge { padding: 4px 12px; border-radius: 999px; font-size: 0.9rem; }
 .lens-badge-small { padding: 2px 8px; border-radius: 999px; font-size: max(0.72rem, 11px); }
@@ -152,7 +151,7 @@
 .flow-sum { font-size: 0.86rem; color: var(--kw-text-secondary); line-height: 1.5; }
 .flow-sum a { color: #ffd93d; text-decoration: none; font-weight: 600; }
 .flow-body details { margin-top: 8px; }
-.flow-body summary { cursor: pointer; color: var(--kw-accent); font-size: max(0.76rem, 11px); list-style: none; }
+.flow-body summary { display: inline-flex; align-items: center; min-height: 32px; cursor: pointer; color: var(--kw-accent); font-size: max(0.76rem, 11px); list-style: none; }
 .flow-body summary::-webkit-details-marker { display: none; }
 .flow-body summary::before { content: '▸ '; }
 .flow-body details[open] summary::before { content: '▾ '; }
@@ -221,7 +220,7 @@
 .hl-badge, .hl-badge-sm { display: inline-block; vertical-align: middle; font-weight: 600; white-space: nowrap; border-radius: 999px; }
 .hl-badge { padding: 3px 10px; font-size: max(0.75rem, 11px); }
 .hl-badge-sm { padding: 1px 7px; font-size: max(0.66rem, 11px); }
-.hl-lens { background: linear-gradient(45deg, #ff007f, #ff8c00); color: #fff; box-shadow: 0 0 10px rgba(255, 0, 127, 0.45); }
+.hl-lens { background: rgba(255, 0, 127, 0.18); color: #ff8cc6; border: 1px solid rgba(255, 0, 127, 0.7); }   /* solid tint like SLSN?, no gradient / glow */
 .hl-lens-cand { background: rgba(255, 0, 127, 0.12); color: #ff6fb4; border: 1px dashed rgba(255, 0, 127, 0.7); }
 .hl-slsn { background: rgba(255, 107, 97, 0.14); color: #ff8a80; border: 1px solid rgba(255, 107, 97, 0.65); }
 

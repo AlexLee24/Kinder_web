@@ -263,5 +263,11 @@ body.shell .sh-foot .home-footer-inner { max-width: none; }
     .sh-q-feat, .sh-q-wide { grid-column: auto; }
     .sh-q-feat { padding: 18px 20px; }
     .sh-q-feat .sh-q-t { font-size: 1.3rem; }
+    /* phones: the tools under Marshal are list rows (icon beside title + line) instead of ~230px cards that
+       were mostly empty, so the whole quick access fits in about a screen */
+    .sh-q:not(.sh-q-feat) { display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: center; padding: 14px 16px; }
+    .sh-q:not(.sh-q-feat) .sh-q-ic { grid-row: 1 / span 2; align-self: start; }
+    .sh-q:not(.sh-q-feat) .sh-q-t { margin-top: 0; font-size: 1rem; }
+    .sh-q:not(.sh-q-feat) .sh-q-d { font-size: 0.84rem; line-height: 1.45; }
     body.shell .sh-foot { margin: 8px 0 0; padding: 20px var(--sh-page-x) 24px; }
 }

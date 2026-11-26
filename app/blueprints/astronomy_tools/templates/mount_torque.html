@@ -3,7 +3,6 @@
     English / 繁體中文 switch are the inline script below. -#}
 {% block title %}Harmonic Analyzer v6.0 (Physics Engine){% endblock %}
 {% block head %}
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <style>
     /* Page colours. --accent is read by the canvas code (getComputedStyle(documentElement)), so it stays on :root;
        UI accents are the site amber. OTA purple / counterweight orange / status colours encode meaning and stay. */
@@ -73,6 +72,9 @@
         font-size: 0.85rem; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     }
     .mt-page .stat-row { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: center; color: var(--kw-text-secondary); }
+    /* value, limit and unit sit together at the right end of the row */
+    .mt-page .stat-row:has(.stat-val) { justify-content: flex-start; gap: 4px; }
+    .mt-page .stat-row .stat-val { margin-left: auto; }
     .mt-page .stat-val { font-family: var(--kw-font-mono); font-weight: 600; color: #fff; }
     .mt-page .stat-sub { font-size: max(0.75rem, 11px); color: var(--kw-text-muted); }
     .mt-page .stat-div { height: 1px; background: var(--kw-hairline); margin: 10px 0; }
@@ -121,6 +123,18 @@
         .mt-page #torqueChart { height: 96px; }
         .mt-page .slider-overlay { width: 130px; }
     }
+    @media (max-width: 600px) {
+        /* phones: the mount on top, the readouts below it instead of over it */
+        .mt-page .display-container, body.controls-collapsed .mt-page .display-container { height: auto; display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
+        .mt-page #simCanvas { height: 360px; }
+        .mt-page .mobile-controls-toggle { display: none; }
+        .mt-page .controls-overlay { bottom: auto; top: 12px; left: 12px; }
+        .mt-page #stats, .mt-page .chart-container, .mt-page .slider-overlay { position: static; width: auto; margin: 0 12px; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+        .mt-page #stats { font-size: 0.85rem; padding: 12px 14px; }
+        .mt-page .chart-container { height: auto; }
+        .mt-page #torqueChart { height: 120px; }
+        .mt-page .slider-overlay label { font-size: 0.8rem !important; }
+    }
 </style>
 {% endblock %}
 
@@ -154,17 +168,17 @@
             </div>
         </div>
 
-        <h3 data-lang="section.mount">Mount Geometry</h3>
+        <h3 data-lang="section.mount">Mount geometry</h3>
         <div class="input-group">
-            <label data-lang="label.l1">L1 (Axis to Saddle) <span class="val-disp" id="v_l1">9.5 <span class="unit">cm</span></span></label>
+            <label data-lang="label.l1">L1 (axis to saddle) <span class="val-disp" id="v_l1">9.5 <span class="unit">cm</span></span></label>
             <input type="range" id="mountH" min="5" max="20" step="0.1" value="9.5">
-            <label data-lang="label.torque">Max Motor Torque <span class="val-disp" id="v_tmax">26 <span class="unit">Nm</span></span></label>
+            <label data-lang="label.torque">Max motor torque <span class="val-disp" id="v_tmax">26 <span class="unit">Nm</span></span></label>
             <input type="range" id="maxTorque" min="10" max="150" step="1" value="26">
         </div>
 
         <h3 data-lang="section.ota">Optical Tubes (OTA)</h3>
         <div id="otaList" class="list-container"></div>
-        <button id="addOtaBtn" class="add-btn" style="border-color: var(--ota-color); color: var(--ota-color);" data-lang="btn.addTelescope">+ Add Telescope</button>
+        <button id="addOtaBtn" class="add-btn" style="border-color: var(--ota-color); color: var(--ota-color);" data-lang="btn.addTelescope">+ Add telescope</button>
         
         <h3 style="display:flex; align-items:center; gap:10px;">
             <span data-lang="section.cw">Counterweights</span>
@@ -185,7 +199,7 @@
                 </div>
             </div>
             <div id="cwList" class="list-container"></div>
-            <button id="addCwBtn" class="add-btn" style="color:var(--warning); border-color:var(--warning);" data-lang="btn.addCW">+ Add Counterweight</button>
+            <button id="addCwBtn" class="add-btn" style="color:var(--warning); border-color:var(--warning);" data-lang="btn.addCW">+ Add counterweight</button>
             <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
                 <span style="font-size:max(0.7rem, 11px); color:var(--kw-text-muted); width:100%;">Vixen Quick Add:</span>
                 <button class="add-btn" style="flex:1; min-width:40px; padding:5px; font-size:0.75rem;" onclick="addVixenCW(1)">1kg</button>
@@ -224,7 +238,7 @@
         </div>
 
         <div class="controls-overlay">
-            <button class="btn-overlay" onclick="resetView()" data-lang="btn.resetView">⟲ Reset View</button>
+            <button class="btn-overlay" onclick="resetView()" data-lang="btn.resetView">Reset view</button>
         </div>
 
         <div class="mobile-controls-toggle">
@@ -237,7 +251,7 @@
         </div>
 
         <div class="slider-overlay">
-            <label style="font-size:0.75rem; color:var(--kw-text-secondary); margin-bottom:4px; display:block;" data-lang="label.raRotation">RA Rotation: <span id="rot_val">0°</span></label>
+            <label style="font-size:0.75rem; color:var(--kw-text-secondary); margin-bottom:4px; display:block;" data-lang="label.raRotation">RA rotation: <span id="rot_val">0°</span></label>
             <input type="range" id="raRotation" min="-180" max="180" step="1" value="0" style="width:100%; margin:0;">
         </div>
     </div>
@@ -257,31 +271,31 @@
 
     const translations = {
         en: {
-            title: "Harmonic Physics",
+            title: "Harmonic physics",
             'preset.custom': "Custom",
-            'section.mount': "Mount Geometry",
-            'section.ota': "Optical Tubes (OTA)",
+            'section.mount': "Mount geometry",
+            'section.ota': "Optical tubes (OTA)",
             'section.cw': "Counterweights",
-            'label.l1': "L1 (Axis to Saddle)",
-            'label.torque': "Max Motor Torque",
-            'label.shaftLen': "Shaft Len",
-            'label.shaftWt': "Shaft Wt",
-            'label.raRotation': "RA Rotation:",
-            'btn.addTelescope': "+ Add Telescope",
-            'btn.addCW': "+ Add Counterweight",
-            'btn.resetView': "⟲ Reset View",
+            'label.l1': "L1 (axis to saddle)",
+            'label.torque': "Max motor torque",
+            'label.shaftLen': "Shaft length",
+            'label.shaftWt': "Shaft weight",
+            'label.raRotation': "RA rotation:",
+            'btn.addTelescope': "+ Add telescope",
+            'btn.addCW': "+ Add counterweight",
+            'btn.resetView': "Reset view",
             'btn.controls': "Controls",
             'chart.title': "Torque vs RA angle",
             'stats.torque': "Torque dynamics",
-            'stats.instant': "Instant Load:",
+            'stats.instant': "Instant load:",
             'stats.peak': "Peak (Horizontal):",
-            'stats.peakPct': "Peak Load %:",
+            'stats.peakPct': "Peak load %:",
             'stats.cm': "Center of mass (CM)",
             'stats.cmOffset': "CM Offset (Radius):",
-            'stats.inertia': "Inertia Total:",
+            'stats.inertia': "Inertia total:",
             'stats.weight': "Weight limits",
             'stats.otaPayload': "OTA Payload:",
-            'stats.sysTotal': "System Total:",
+            'stats.sysTotal': "System total:",
             'item.mass': "Mass (kg)",
             'item.pos': "Pos (cm)",
             'item.diam': "Diam (mm)",
@@ -294,8 +308,8 @@
             'status.tooHeavy': "Too heavy",
             'status.tooLight': "Too light",
             'status.heavyLoad': "Heavy load",
-            'btn.showControls': "Show Controls",
-            'btn.hideControls': "Hide Controls",
+            'btn.showControls': "Show controls",
+            'btn.hideControls': "Hide controls",
             'advice.otaOverload': ICONS.warning + " OTA Payload ({ota}kg) exceeds limit ({limit}kg)! Remove {diff}kg from telescope setup.",
             'advice.sysOverload': ICONS.warning + " System total ({total}kg) exceeds structural limit ({limit}kg)! Reduce overall weight by {diff}kg.",
             'advice.danger': ICONS.warning + " DANGER: Torque exceeds motor limit. Reduce payload or re-balance immediately.",
@@ -557,7 +571,7 @@
             const div = document.createElement('div'); div.className = 'item-box ota-box';
             div.innerHTML = `
                 <button class="item-remove" onclick="delOTA(${o.id})">${ICONS.x}</button>
-                <div style="color:var(--ota-color); font-weight:bold; font-size:0.8rem; margin-bottom:4px;">${telescopeLabel} ${o.label}</div>
+                <div style="color:var(--ota-color); font-weight:600; font-size:0.8rem; margin-bottom:4px;">${telescopeLabel} ${o.label}</div>
                 <div class="item-row">
                     <div class="item-col"><span class="item-label">${diamLabel}</span><input type="range" min="50" max="400" step="5" value="${o.aperture * 10}" oninput="updOTA(${o.id}, 'aperture', this.value/10, this)"></div>
                     <div class="item-col" style="text-align:right; font-family:monospace;">${(o.aperture*10).toFixed(0)} <span class="unit">mm</span></div>
@@ -897,7 +911,7 @@
     };
     canvas.onwheel = e => { e.preventDefault(); view.scale = Math.min(Math.max(view.scale * Math.exp(e.deltaY * -0.001), 0.2), 5); requestAnimationFrame(draw); };
     window.resetView = () => { view.scale = window.innerWidth<900?0.9:1.3; view.x=0; view.y=50; els.raRot.value=0; update(); };
-    window.onresize = () => { canvas.width=canvas.parentElement.offsetWidth; canvas.height=canvas.parentElement.offsetHeight; update(); };
+    window.onresize = () => { canvas.width=canvas.clientWidth; canvas.height=canvas.clientHeight; update(); };
 
     // Vixen Counterweight Quick Add
     window.addVixenCW = (weight) => { 

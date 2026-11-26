@@ -154,3 +154,8 @@
 @media (max-width: 860px) {
     #script-output { height: 300px; }
 }
+
+/* No targets yet: just the empty message (the bare header row and a scrollbar said nothing);
+   the script box is short until there is a script to show */
+.targets-panel:has(#targets-body:not(:has(tr))) .kw-table-wrap { display: none; }
+@media (max-width: 860px) { #script-output:placeholder-shown { height: 120px; min-height: 120px; } }
