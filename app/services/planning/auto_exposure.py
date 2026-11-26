@@ -34,6 +34,7 @@ MAX_TOTAL_S = 30 * 60          # a plan longer than this at the telescope is fla
 # Pan-STARRS alignment, 19.4-19.7 mag deep), stacks always; g r i at 150 s always worked (60 s never tried); u is
 # stacked two by two at 300 s. A target bright enough to saturate gets shorter frames (SAT_MARGIN).
 MIN_EXP_S = {'up': 300, 'gp': 150, 'rp': 150, 'ip': 150, 'zp': 300}
+MAX_EXP_S = 300               # longest single frame: a fainter target gets more 300 s frames, not longer ones
 FRAME_STEPS = (150,)          # frame lengths besides CASTOR's own (150 s: what SLT has been taking)
 SAT_MARGIN = 0.7              # a frame at most 70% of CASTOR's saturation time for the target
 SITE, TELESCOPE, CAMERA = 'lulin', 'SLT', 'SLT_DZ936'      # the SLT camera since 2026-11-03
@@ -198,6 +199,15 @@ def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None):
     rec, status = r.get('recommended'), r.get('status')
     if not rec:
         return {'status': status, 'exp': None, 'count': None, 'elapsed': None, 'snr': None}
+    if rec['exp_s'] > MAX_EXP_S:     # as many MAX_EXP_S frames as reach the S/N (CASTOR's row for that length)
+        row = next((x for x in r.get('rows') or [] if x['exp_s'] == MAX_EXP_S), None)
+        if row is None:
+            n = max(1, math.ceil(rec['total_s'] / MAX_EXP_S))
+            row = plan.compute_snr(cat, **kw, single_exp_time=MAX_EXP_S, num_exposures=n)['chosen']
+            while row['snr'] < float(snr) and n < 200:
+                n += 1
+                row = plan.compute_snr(cat, **kw, single_exp_time=MAX_EXP_S, num_exposures=n)['chosen']
+        rec = row
     # longer frames than CASTOR's, up to min_exp, but never into saturation: the target's peak pixel must stay below
     # full well with SAT_MARGIN to spare (better seeing than the median 1.4" puts more light in the peak)
     t_sat = float(r['conditions'].get('saturation_time_s') or 0)

@@ -78,6 +78,14 @@ def test_castor_plan_never_goes_below_the_shortest_frame():
     assert z['exp'] >= 300
 
 
+@pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
+def test_a_faint_target_gets_more_frames_not_longer_ones():
+    when = datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc)
+    for cf in ('Sloan_u', 'Sloan_g', 'Sloan_r', 'Sloan_z'):
+        p = ae.plan_filter(cf, 47.9087, -2.0267, 19.5, 20, when)
+        assert p['exp'] == ae.MAX_EXP_S and p['count'] >= 2 and p['snr'] >= 20, (cf, p)
+
+
 def test_target_form_without_magnitude_cannot_use_auto(monkeypatch):
     from app.blueprints.private_area import targets
     monkeypatch.setattr(ae, 'latest_detections', lambda name: {})
