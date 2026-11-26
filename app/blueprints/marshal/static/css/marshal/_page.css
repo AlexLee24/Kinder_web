@@ -82,7 +82,7 @@
     .marshal-kpis .kw-kpi { padding: 10px 12px; border-radius: var(--kw-radius-lg); }
     .marshal-kpis .kw-kpi { justify-content: space-between; }
     .marshal-kpis .kw-kpi b { font-size: 1.15rem; margin-top: auto; }   /* numbers line up even when a label wraps */
-    .marshal-kpis .kw-kpi-label { font-size: 0.62rem; letter-spacing: 0.04em; white-space: normal; line-height: 1.25; align-items: flex-start; }
+    .marshal-kpis .kw-kpi-label { font-size: max(0.62rem, 11px); white-space: normal; line-height: 1.25; align-items: flex-start; }
     .marshal-kpis .status-icon { display: none; }
     .marshal-dash.kw-dash > .dashboard-side-panel { gap: 12px; }
     .marshal-page .content-area { gap: 12px; }

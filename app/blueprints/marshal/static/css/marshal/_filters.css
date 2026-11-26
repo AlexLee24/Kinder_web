@@ -42,7 +42,7 @@
 .filter-group label {
     display: block;
     margin-bottom: 8px;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     font-weight: 600;
     color: var(--kw-text-secondary);
 }
@@ -70,7 +70,7 @@
 
 .filter-tooltip {
     margin-top: 8px;
-    font-size: 0.76rem;
+    font-size: max(0.76rem, 11px);
     line-height: 1.45;
     color: var(--kw-text-muted);
 }

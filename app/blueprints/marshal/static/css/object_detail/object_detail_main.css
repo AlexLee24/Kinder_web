@@ -65,7 +65,7 @@ body.shell .sh-pagebar .od-jump .kw-tab.is-active { color: var(--color-accent-te
     gap: 5px;
     padding: 3px 10px;
     border-radius: 6px;
-    font-size: 0.76rem;
+    font-size: max(0.76rem, 11px);
     font-weight: 600;
     letter-spacing: 0.4px;
 }
@@ -101,7 +101,7 @@ body.shell .sh-pagebar .od-jump .kw-tab.is-active { color: var(--color-accent-te
     align-items: center;
     padding: 2px 9px;
     border-radius: 5px;
-    font-size: 0.72rem;
+    font-size: max(0.72rem, 11px);
     font-weight: 600;
     background: rgba(255,255,255,0.06);
     border: 1px solid rgba(255,255,255,0.12);
@@ -159,8 +159,8 @@ body.shell .sh-pagebar .od-jump .kw-tab.is-active { color: var(--color-accent-te
     height: 18px;
     padding: 0 5px;
     border-radius: 9px;
-    font-size: 0.68rem;
-    font-weight: 700;
+    font-size: max(0.68rem, 11px);
+    font-weight: 600;
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--kw-accent);
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
@@ -170,7 +170,7 @@ body.shell .sh-pagebar .od-jump .kw-tab.is-active { color: var(--color-accent-te
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--kw-accent, var(--kw-accent));
     border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
-    font-size: 0.62rem;
+    font-size: max(0.62rem, 11px);
     padding: 0 6px;
 }
 
@@ -224,7 +224,7 @@ select.btn-modern { min-height: 0; }
 .phot-panel-header, .spec-panel-header { flex-wrap: nowrap; }
 :is(.phot-panel-header, .spec-panel-header) > * { min-width: 0; max-width: 100%; }
 .top-badge-row .badge svg { width: 13px; height: 13px; flex-shrink: 0; }
-.panel-header h3 { margin: 0; font-size: 1rem; font-weight: 700; color: var(--kw-text-white); }
+.panel-header h3 { margin: 0; font-size: 1rem; font-weight: 600; color: var(--kw-text-white); }
 
 /* Photometry panel: stacked header (title+toggles top, buttons bottom) */
 .phot-panel-header {
@@ -247,12 +247,12 @@ select.btn-modern { min-height: 0; }
     margin: 0;
     font-size: 1rem;
     color: var(--kw-text-white);
-    font-weight: 700;
+    font-weight: 600;
     white-space: nowrap;
 }
 
 .phot-date-chip {
-    font-size: 0.72rem;
+    font-size: max(0.72rem, 11px);
     font-weight: 400;
     color: rgba(255,255,255,0.4);
     background: rgba(255,255,255,0.05);
@@ -271,7 +271,7 @@ select.btn-modern { min-height: 0; }
     display: flex;
     align-items: center;
     cursor: pointer;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: rgba(255,255,255,0.5);
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.12);
@@ -313,7 +313,7 @@ select.btn-modern { min-height: 0; }
     position: fixed;
     background: rgba(18, 18, 32, 0.97);
     color: #c8d0e0;
-    font-size: 0.73rem;
+    font-size: max(0.73rem, 11px);
     padding: 6px 12px;
     border-radius: 6px;
     white-space: nowrap;
@@ -426,7 +426,7 @@ select.btn-modern { min-height: 0; }
 }
 .detail-list-row .detail-item { flex: 0 1 auto; }
 .detail-list-row .detail-item-wide { flex: 0 1 260px; }
-.detail-list-row .detail-label { font-size: 0.78rem; white-space: nowrap; }
+.detail-list-row .detail-label { font-size: max(0.78rem, 11px); white-space: nowrap; }
 .detail-list-row .detail-value { font-size: 0.92rem; overflow-wrap: anywhere; }
 .od-info-head { flex-wrap: wrap; }
 .od-info-actions {
@@ -456,7 +456,7 @@ select.btn-modern { min-height: 0; }
     position: absolute;
     left: 0; right: 0; bottom: 10px;
     text-align: center;
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     color: rgba(255, 255, 255, 0.28);
     pointer-events: none;
     padding: 0 10px;
@@ -486,7 +486,7 @@ select.btn-modern { min-height: 0; }
     margin-bottom: 12px;
     flex-shrink: 0;
 }
-.top-mini-title { font-size: 1rem; font-weight: 700; color: var(--kw-text-white); }
+.top-mini-title { font-size: 1rem; font-weight: 600; color: var(--kw-text-white); }
 .top-mini-count {
     display: inline-flex;
     align-items: center;
@@ -495,7 +495,7 @@ select.btn-modern { min-height: 0; }
     height: 18px;
     padding: 0 6px;
     border-radius: 999px;
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     font-weight: 600;
     background: rgba(255, 255, 255, 0.1);
     color: var(--kw-text-secondary);
@@ -524,7 +524,7 @@ select.btn-modern { min-height: 0; }
     gap: 12px;
     flex-wrap: wrap;
 }
-.spec-header-top h3 { margin: 0; font-size: 1rem; color: var(--kw-text-white); font-weight: 700; }
+.spec-header-top h3 { margin: 0; font-size: 1rem; color: var(--kw-text-white); font-weight: 600; }
 
 /* Spectral line group toggle row */
 .spec-lines-groups {
@@ -536,14 +536,14 @@ select.btn-modern { min-height: 0; }
     border-top: 1px solid rgba(255,255,255,0.05);
 }
 .spec-lines-label {
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     color: rgba(255,255,255,0.35);
     margin-right: 2px;
     white-space: nowrap;
 }
 .spec-line-btn {
     padding: 2px 9px;
-    font-size: 0.73rem;
+    font-size: max(0.73rem, 11px);
     font-weight: 600;
     border-radius: 4px;
     border: 1px solid rgba(255,255,255,0.12);
@@ -566,7 +566,7 @@ select.btn-modern { min-height: 0; }
     align-items: center;
     padding: 1px 7px;
     border-radius: 4px;
-    font-size: 0.72em;
+    font-size: max(0.72em, 11px);
     font-weight: 600;
     letter-spacing: 0.03em;
     cursor: default;
@@ -599,14 +599,14 @@ select.btn-modern { min-height: 0; }
     border-left: 1px solid rgba(255,255,255,0.1);
 }
 .spec-z-control label {
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     font-style: italic;
     color: rgba(255,255,255,0.45);
 }
 .spec-z-control input {
     width: 72px;
     padding: 2px 6px;
-    font-size: 0.73rem;
+    font-size: max(0.73rem, 11px);
     background: rgba(0,0,0,0.3);
     color: #fff;
     border: 1px solid rgba(255,255,255,0.15);
@@ -647,9 +647,8 @@ select.btn-modern { min-height: 0; }
 .spec-group-lbl {
     min-width: 30px;
     padding: 1px 6px;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    font-size: max(0.68rem, 11px);
+    font-weight: 600;
     border: 1px solid color-mix(in srgb, var(--clr, #aaa) 30%, transparent);
     border-radius: 3px;
     background: transparent;
@@ -669,7 +668,7 @@ select.btn-modern { min-height: 0; }
 /* Individual line chip */
 .spec-chip {
     padding: 1px 5px;
-    font-size: 0.65rem;
+    font-size: max(0.65rem, 11px);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 3px;
     background: transparent;
@@ -707,7 +706,7 @@ select.btn-modern { min-height: 0; }
     border-left: 1px solid rgba(255,255,255,0.1);
 }
 .spec-wave-control label {
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     font-style: italic;
     color: rgba(255,255,255,0.45);
     white-space: nowrap;
@@ -715,7 +714,7 @@ select.btn-modern { min-height: 0; }
 .spec-wave-control input {
     width: 62px;
     padding: 2px 6px;
-    font-size: 0.73rem;
+    font-size: max(0.73rem, 11px);
     background: rgba(0,0,0,0.35);
     color: #ddd;
     border: 1px solid rgba(255,255,255,0.15);
@@ -726,11 +725,11 @@ select.btn-modern { min-height: 0; }
     border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
 }
 .spec-wave-sep {
-    font-size: 0.75rem;
+    font-size: max(0.75rem, 11px);
     color: rgba(255,255,255,0.3);
 }
 .spec-wave-unit {
-    font-size: 0.73rem;
+    font-size: max(0.73rem, 11px);
     color: rgba(255,255,255,0.3);
     white-space: nowrap;
 }
@@ -899,7 +898,6 @@ select.btn-modern { min-height: 0; }
     cursor: pointer;
     border: 1px solid rgba(255, 255, 255, 0.2);
     transition: all 0.3s ease;
-    letter-spacing: 0.5px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1024,7 +1022,7 @@ select.btn-modern { min-height: 0; }
 }
 
 .perm-hint {
-    font-size: 0.79rem;
+    font-size: max(0.79rem, 11px);
     color: rgba(255,255,255,0.4);
     background: rgba(0,0,0,0.18);
     border-left: 2px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
@@ -1068,7 +1066,7 @@ select.btn-modern { min-height: 0; }
 }
 
 .perm-toolbar-hint {
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: rgba(255,255,255,0.2);
     font-style: italic;
 }
@@ -1100,8 +1098,8 @@ select.btn-modern { min-height: 0; }
     background: var(--kw-accent);
     color: #1a1a2e;
     border-radius: 11px;
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: max(0.78rem, 11px);
+    font-weight: 600;
     line-height: 1;
 }
 
@@ -1120,7 +1118,7 @@ select.btn-modern { min-height: 0; }
 }
 
 .perm-batch-apply-label {
-    font-size: 0.79rem;
+    font-size: max(0.79rem, 11px);
     color: rgba(255,255,255,0.4);
     white-space: nowrap;
     flex-shrink: 0;
@@ -1128,7 +1126,7 @@ select.btn-modern { min-height: 0; }
 
 .perm-batch-btn {
     padding: 4px 10px !important;
-    font-size: 0.78rem !important;
+    font-size: max(0.78rem, 11px) !important;
 }
 
 .perm-batch-clear-btn {
@@ -1204,7 +1202,7 @@ select.btn-modern { min-height: 0; }
 .perm-custom-tag {
     display: inline-block;
     margin-top: 2px;
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     color: var(--kw-accent);
 }
 
@@ -1250,7 +1248,7 @@ select.btn-modern { min-height: 0; }
 /* Pill buttons */
 .perm-pill {
     padding: 4px 11px;
-    font-size: 0.79rem;
+    font-size: max(0.79rem, 11px);
     font-weight: 500;
     border-radius: 20px;
     border: 1px solid rgba(255,255,255,0.12);
@@ -1322,13 +1320,13 @@ select.btn-modern { min-height: 0; }
     border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
     border-radius: 4px;
     color: var(--kw-accent);
-    font-size: 0.76rem;
+    font-size: max(0.76rem, 11px);
 }
 
 .perm-chip-remove {
     cursor: pointer;
     color: rgba(255,100,100,0.65);
-    font-weight: bold;
+    font-weight: 600;
     padding: 0 1px;
     line-height: 1;
     transition: color 0.15s;
@@ -1342,7 +1340,7 @@ select.btn-modern { min-height: 0; }
     border: 1px dashed rgba(255,255,255,0.14);
     border-radius: 4px;
     padding: 3px 7px;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     outline: none;
     cursor: pointer;
     max-width: 150px;
@@ -1412,7 +1410,7 @@ select.btn-modern { min-height: 0; }
     border: 1px solid rgba(255,255,255,0.15);
     border-radius: 5px;
     padding: 2px 6px;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     cursor: pointer;
     outline: none;
 }
@@ -1487,7 +1485,7 @@ select.btn-modern { min-height: 0; }
 
 .kn-mjd-label {
     font-family: monospace;
-    font-size: 0.78rem;
+    font-size: max(0.78rem, 11px);
     color: var(--kw-accent);
     white-space: nowrap;
     min-width: 72px;

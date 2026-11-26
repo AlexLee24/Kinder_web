@@ -376,7 +376,7 @@
         border-radius: 8px;
         margin: 20px 0 0 0;
         cursor: pointer;
-        font-weight: bold;
+        font-weight: 600;
         color: var(--kw-accent); /* Default primary-like color */
         transition: background 0.2s;
     }
@@ -471,7 +471,9 @@
         display: flex;
         margin: 0 var(--sh-page-x) 12px;
     }
-    body.od-body .sh-pagebar-c .od-jump { width: 100%; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); background: var(--color-surface-elevated); }
+    /* solid behind the bar: its scroll-fade edges and the glass would otherwise let the page show through */
+    body.od-body .sh-pagebar-c { background: rgb(26, 26, 30); border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+    body.od-body .sh-pagebar-c .od-jump { width: 100%; background: rgb(26, 26, 30); }
     .object-detail-container :is(#commentsMiniPanel, #od-detect-img, #od-info, #od-images, #od-phot, #od-spec, #od-perm) {
         scroll-margin-top: calc(var(--kw-nav-h) + 64px);
     }

@@ -54,7 +54,6 @@
     font-size: 1.1rem;
     font-weight: 500;
     color: var(--text-primary);
-    letter-spacing: 0.5px;
 }
 
 .card-content {
@@ -77,8 +76,7 @@
     border-radius: 6px;
     font-size: 11px;
     font-weight: 600;
-    /* text-transform: uppercase; */
-    letter-spacing: 1px;
+    /* */
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -122,10 +120,8 @@
     height: 22px;
     padding: 0 9px;
     border-radius: 5px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
@@ -139,9 +135,8 @@
     height: 22px;
     padding: 0 9px;
     border-radius: 5px;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.5px;
     background: rgba(160, 160, 180, 0.18);
     color: #c8c8d8;
     border: 1px solid rgba(160, 160, 180, 0.3);
@@ -240,8 +235,6 @@
     justify-content: center;
     gap: 6px;
     transition: all 0.2s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     font-weight: 500;
 }
 
@@ -268,7 +261,6 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
-    letter-spacing: 0.5px;
     text-align: center;
     display: inline-flex;
     justify-content: center;
@@ -435,7 +427,7 @@
 .link-arrow {
     font-size: 16px;
     color: var(--primary-color);
-    font-weight: bold;
+    font-weight: 600;
 }
 
 /* Breadcrumb */
@@ -513,7 +505,6 @@
     font-size: 12px;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.7);
-    letter-spacing: 0.5px;
 }
 
 .info-value {
@@ -864,7 +855,7 @@
 }
 
 .sort-arrow {
-    font-size: 0.7rem;
+    font-size: max(0.7rem, 11px);
     opacity: 0.8;
 }
 
@@ -1178,12 +1169,10 @@
 .admin-badge {
     background: linear-gradient(135deg, #ffd700, #ffb347);
     color: #333;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     padding: 2px 6px;
     border-radius: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 /* Error state for comments */
@@ -1321,8 +1310,6 @@
     font-size: 14px;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.8);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
     margin-bottom: 15px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
@@ -1369,8 +1356,6 @@
     transition: all 0.3s ease;
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
 }
 
 .status-btn-compact.inbox { 
@@ -1427,8 +1412,6 @@
     text-align: center;
     font-size: 11px;
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
 }
 
 .external-link-compact:hover {
@@ -1449,8 +1432,6 @@
     font-size: 11px;
     font-weight: 500;
     color: white;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
 }
 
 /* Special hover effects for different external links */

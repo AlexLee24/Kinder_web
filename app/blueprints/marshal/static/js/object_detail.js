@@ -304,9 +304,9 @@ function forceDetectRun() {
 function _detectVerdictHtml(screen) {
     if (!screen) return '';
     const hs = screen.host_status || 'none';
-    const badge = hs === 'confirmed' ? '<span style="color:#46ffaf; border:1px solid rgba(70,255,175,0.5); border-radius:5px; padding:1px 7px; font-weight:700;">● Confirmed host</span>'
-                : hs === 'review'    ? '<span style="color:#ffd93d; border:1px solid rgba(255,217,61,0.55); border-radius:5px; padding:1px 7px; font-weight:700;">? Needs judgement</span>'
-                :                      '<span style="color:#b0b5b0; border:1px solid rgba(138,143,138,0.45); border-radius:5px; padding:1px 7px; font-weight:700;">○ No host</span>';
+    const badge = hs === 'confirmed' ? '<span style="color:#46ffaf; border:1px solid rgba(70,255,175,0.5); border-radius:5px; padding:1px 7px; font-weight:600;">● Confirmed host</span>'
+                : hs === 'review'    ? '<span style="color:#ffd93d; border:1px solid rgba(255,217,61,0.55); border-radius:5px; padding:1px 7px; font-weight:600;">? Needs judgement</span>'
+                :                      '<span style="color:#b0b5b0; border:1px solid rgba(138,143,138,0.45); border-radius:5px; padding:1px 7px; font-weight:600;">○ No host</span>';
     const hot = ['Luminous', 'SLSN?', 'Too-bright', 'glSN?', 'Kilonova?'], veto = ['Galactic', 'AGN', 'Classified', 'Star?'];
     const tags = (screen.tags || []).map(t => {
         const c = hot.includes(t) ? '#ff8080' : veto.includes(t) ? '#999' : t === 'Ambiguous' || t === 'z-conflict' || t === 'Host-z?' ? '#ffd93d' : '#a8c0ff';
@@ -327,7 +327,7 @@ function _detectVerdictHtml(screen) {
             + (screen.kn_model_n ? ` · ${escapeHtml(screen.kn_model_in)}/${escapeHtml(screen.kn_model_n)} g/r/i points inside the POSSIS kilonova envelope` : '');
     }
     return `<div style="border-left:3px solid ${hs === 'confirmed' ? '#46ffaf' : hs === 'review' ? '#ffd93d' : '#666'}; padding:4px 8px; margin-bottom:6px; color:#ccc; line-height:1.5;">
-        <div>${badge} <span style="color:#fff; font-weight:700; margin-left:6px;">score ${escapeHtml(screen.score)}</span> <span style="color:#666; margin-left:6px; font-size:0.85em;">DETECT ${escapeHtml(screen.run_date || '')}</span></div>
+        <div>${badge} <span style="color:#fff; font-weight:600; margin-left:6px;">score ${escapeHtml(screen.score)}</span> <span style="color:#666; margin-left:6px; font-size:0.85em;">DETECT ${escapeHtml(screen.run_date || '')}</span></div>
         <div>${[am, z].filter(Boolean).join(' · ')}</div>
         ${line ? `<div style="color:#aaa; font-size:0.92em;">${line}</div>` : ''}
         ${kn ? `<div style="color:${(screen.tags || []).includes('Kilonova?') ? '#ff8080' : '#aaa'}; font-size:0.92em;">${kn}</div>` : ''}
@@ -413,7 +413,7 @@ function renderDetectData(results, screen) {
                        : mdata.host_tentative ? 'tentative'
                        : (mdata.d_dlr != null ? 'outside' : 'no model');
             const col = res.is_host ? '#46ffaf' : mdata.host_tentative ? '#ffd93d' : '#888';
-            extraInfo += ` | <span style="color:${col}; font-weight:700;">${rule}</span>`;
+            extraInfo += ` | <span style="color:${col}; font-weight:600;">${rule}</span>`;
             if (has(mdata, 'd_dlr')) extraInfo += ` | d_DLR=${parseFloat(mdata.d_dlr).toFixed(2)}${has(mdata, 'd_dlr_max') ? '/' + escapeHtml(mdata.d_dlr_max) : ''}`;
             if (has(mdata, 'spectype')) extraInfo += ` | ${escapeHtml(mdata.spectype)}`;
             if (has(mdata, 'tractor_type')) extraInfo += ` ${escapeHtml(mdata.tractor_type)}`;
@@ -1029,7 +1029,7 @@ function changeStatus(newStatus) {
             updateStatusDisplay(newStatus);
             
             // Show success notification
-            showNotification(`Status changed to ${newStatusName} successfully!`, 'success');
+            showNotification(`Status changed to ${newStatusName}`, 'success');
             
             // Optional: Slight page refresh for status-related elements
             setTimeout(() => {
@@ -3311,7 +3311,7 @@ function submitSpectrumData() {
     })
     .then(() => {
         closeSpectrumUploadModal();
-        showNotification('Spectroscopy uploaded successfully!', 'success');
+        showNotification('Spectroscopy uploaded', 'success');
         loadSpectrumPlot();
     })
     .catch(error => {
@@ -4673,7 +4673,7 @@ function submitEditObject() {
                 objectData.tags = cleanData.tags;
                 renderCustomTags(cleanData.tags);
             }
-            showEditResult('success', 'Success!', data.message);
+            showEditResult('success', 'Done', data.message);
             showNotification('Object updated successfully! Page will refresh in 2 seconds...', 'success');
             setTimeout(() => {
                 closeEditModal();

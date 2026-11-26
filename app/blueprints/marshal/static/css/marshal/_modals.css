@@ -41,7 +41,6 @@
     margin: 0;
     color: #ffffff;
     font-weight: var(--font-weight-normal);
-    letter-spacing: 0.5px;
 }
 
 .modal-close {
@@ -153,7 +152,6 @@
     color: var(--primary-green);
     margin-bottom: var(--spacing-md);
     font-weight: var(--font-weight-medium);
-    letter-spacing: 0.5px;
 }
 
 .detail-item {
@@ -241,7 +239,6 @@
     margin: 0;
     color: #ffffff;
     font-weight: var(--font-weight-normal);
-    letter-spacing: 0.5px;
     font-size: 1.4rem;
 }
 
