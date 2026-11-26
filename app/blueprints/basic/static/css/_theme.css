@@ -191,7 +191,7 @@ body {
 }
 :where(button, .btn):not(:disabled):active { transform: scale(0.98); }
 :where(table) { border-collapse: collapse; }
-:where(th) { font-weight: 600; color: var(--kw-text-secondary); font-size: var(--kw-text-xs); letter-spacing: 0.04em; text-transform: uppercase; }
+:where(th) { font-weight: 600; color: var(--kw-text-secondary); font-size: var(--kw-text-xs); }
 
 /* ── Shared button roles (used across pages: .btn-primary etc.) ── */
 .btn, .btn-modern {
@@ -268,16 +268,14 @@ body {
 .kw-eyebrow {
     display: inline-block;
     margin-bottom: 6px;
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
     color: var(--kw-accent);
 }
 .kw-page-head h1 {
     margin: 0;
     font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem);
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.2;
     color: var(--kw-text-white);
@@ -389,7 +387,7 @@ body {
 }
 button.kw-kpi { cursor: pointer; }
 a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
-.kw-kpi-label { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--kw-text-muted); }
+.kw-kpi-label { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--kw-text-muted); }
 .kw-kpi b { margin: 4px 0 2px; font-size: 1.9rem; font-weight: 600; line-height: 1.1; color: var(--kw-text-white); font-variant-numeric: tabular-nums; }
 .kw-kpi small { font-size: 0.74rem; color: var(--kw-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kw-kpi.is-alert { border-color: var(--kw-accent-border); }
@@ -422,7 +420,7 @@ a.kw-kpi:hover, button.kw-kpi:hover { border-color: var(--kw-border-med); }
 .kw-panel-head h2, .kw-panel-head h3 {
     display: flex; align-items: center; gap: 8px;
     margin: 0;
-    font-size: 1rem; font-weight: 700; letter-spacing: 0;
+    font-size: 1rem; font-weight: 600; letter-spacing: 0;
     color: var(--kw-text-white);
 }
 .kw-panel-head h2 svg, .kw-panel-head h3 svg { width: 16px; height: 16px; color: var(--kw-accent); flex-shrink: 0; }
@@ -453,7 +451,7 @@ a.kw-row:hover { background: rgba(255, 255, 255, 0.04); }
 .kw-table th, .kw-table td { padding: 11px 14px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--kw-hairline); }
 .kw-table thead th {
     padding-top: 12px; padding-bottom: 12px;
-    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    font-size: 0.75rem; font-weight: 600;
     color: var(--kw-text-secondary);
     background: rgba(255, 255, 255, 0.03);
     border-bottom: 1px solid var(--kw-border);

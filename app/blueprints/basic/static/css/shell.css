@@ -81,8 +81,8 @@ body.shell :is(.sh-top, .sh-rail, .sh-fly, .sh-views, .sh-pagebar) * { box-sizin
 .sh-brand img { height: 40px; width: auto; flex: none;   /* the logo is upright (43×64): keep its proportions */
     filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5)); }
 .sh-brand-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.1; }
-.sh-brand-txt b { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.02em; color: #fff; transition: color 0.15s; }
-.sh-brand-txt small { margin-top: 2px; font-size: 0.68rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent); white-space: nowrap; }
+.sh-brand-txt b { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; color: #fff; transition: color 0.15s; }
+.sh-brand-txt small { margin-top: 2px; font-size: 0.75rem; font-weight: 500; color: var(--color-accent); white-space: nowrap; }
 
 /* ── Left rail ── */
 .sh-rail {
@@ -430,6 +430,8 @@ a, button, input, select, textarea, label, summary { touch-action: manipulation;
     @media (pointer: coarse) {
         input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="file"]):not([type="color"]),
         select, textarea { font-size: 16px !important; }
+        /* 44px touch targets for the shared buttons (segmented switches keep their own size) */
+        .kw-btn:not(.pa-action-switch *):not(.kw-seg *) { min-height: 44px; }
     }
 }
 

@@ -38,7 +38,7 @@
 .profile-name-row h1 {
     margin: 0;
     font-size: clamp(1.45rem, 1.2rem + 0.8vw, 1.85rem);
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.2;
     color: var(--kw-text-white);
@@ -50,7 +50,7 @@
 
 .profile-facts { display: flex; gap: 10px; margin: 0; }
 .profile-facts > div { min-width: 104px; padding: 12px 14px; border-radius: var(--kw-radius-lg); background: var(--kw-card-bg-2); border: 1px solid var(--kw-border); text-align: center; }
-.profile-facts dt { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--kw-text-muted); }
+.profile-facts dt { font-size: 0.75rem; color: var(--kw-text-muted); }
 .profile-facts dd { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 4px 0 0; font-size: 1.05rem; font-weight: 400; color: #fff; white-space: nowrap; }
 
 .profile-note {

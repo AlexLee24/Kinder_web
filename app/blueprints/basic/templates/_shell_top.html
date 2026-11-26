@@ -56,12 +56,12 @@
             {% endif %}
             <div class="sh-user-sep" role="separator"></div>
             {# Logout is a POST (GET kept only as a no-JS fallback) #}
-            <a href="{{ url_for('auth.logout') }}" role="menuitem" data-noprogress onclick="event.preventDefault(); document.getElementById('kw-logout-form').submit();">{{ sh.ic('logout') }}<span>Log Out</span></a>
+            <a href="{{ url_for('auth.logout') }}" role="menuitem" data-noprogress onclick="event.preventDefault(); document.getElementById('kw-logout-form').submit();">{{ sh.ic('logout') }}<span>Log out</span></a>
             <form id="kw-logout-form" method="post" action="{{ url_for('auth.logout') }}" style="display:none"></form>
         </div>
     </div>
     {% else %}
-    <a href="{{ url_for('basic.login') }}" class="sh-login" aria-label="Log In" title="Log In">{{ sh.ic('login') }}</a>
+    <a href="{{ url_for('basic.login') }}" class="sh-login" aria-label="Log in" title="Log in">{{ sh.ic('login') }}</a>
     {% endif %}
 </div>
 </header>

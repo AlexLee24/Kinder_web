@@ -75,16 +75,17 @@ html.ui-bg-solid .st-preview::before { display: none; }
 
 /* Push notifications (js/push.js): state on the left, actions on the right; data-state = loading|on|off|denied|ios|na */
 .st-push { margin-top: 16px; scroll-margin-top: 90px; }
-.st-push-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.st-push-ic { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--kw-text-faint); }
+.st-push-row { display: flex; align-items: flex-start; gap: 10px 14px; flex-wrap: wrap; }
+.st-push-ic { width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; flex-shrink: 0; background: var(--kw-text-faint); }   /* on the title's line */
 .st-push[data-state="on"] .st-push-ic { background: var(--kw-color-success); box-shadow: 0 0 0 4px rgba(48, 209, 88, 0.15); }
 .st-push[data-state="denied"] .st-push-ic { background: var(--kw-color-danger); }
 .st-push[data-state="off"] .st-push-ic { background: var(--color-accent); }
-.st-push-state { flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.st-push-state { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .st-push-state b { font-size: 0.92rem; font-weight: 600; color: var(--kw-text-white); }
 .st-push-state small { font-size: 0.8rem; line-height: 1.55; color: var(--kw-text-secondary); }
 .st-push-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .st-push-actions:empty { display: none; }
+@media (max-width: 560px) { .st-push-actions { flex-basis: 100%; padding-left: 24px; } }   /* phones: buttons under the text, lined up with it */
 .st-push-cats { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--kw-hairline); font-size: 0.84rem; }
 .st-push-cats[hidden] { display: none; }
 .st-push-cats-h { color: var(--kw-text-muted); }
