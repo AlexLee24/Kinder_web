@@ -73,7 +73,17 @@ def test_best_time_is_inside_the_night():
 def test_castor_plan_never_goes_below_the_shortest_frame():
     when = datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc)
     p = ae.plan_filter('Sloan_r', 47.9087, -2.0267, 16.7, 20, when)        # CASTOR alone: one 15 s frame
-    assert p['status'] == 'ok' and p['exp'] >= ae.MIN_EXP_S and p['snr'] >= 20
+    assert p['status'] == 'ok' and p['exp'] >= ae.MIN_EXP_S['rp'] and p['snr'] >= 20
+    z = ae.plan_filter('Sloan_z', 47.9087, -2.0267, 16.24, 20, when)     # AT2026afqt z: 60 s was too shallow for TS
+    assert z['exp'] >= 300
+
+
+@pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
+def test_a_faint_target_gets_more_frames_not_longer_ones():
+    when = datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc)
+    for cf in ('Sloan_u', 'Sloan_g', 'Sloan_r', 'Sloan_z'):
+        p = ae.plan_filter(cf, 47.9087, -2.0267, 19.5, 20, when)
+        assert p['exp'] == ae.MAX_EXP_S and p['count'] >= 2 and p['snr'] >= 20, (cf, p)
 
 
 def test_target_form_without_magnitude_cannot_use_auto(monkeypatch):
