@@ -46,3 +46,18 @@ def test_bad_input_is_a_400_with_a_message(client):
     assert code == 400 and res["error"] == "Fill in the magnitude, exposure time and seeing."
     code, res = post(client, **BASE)
     assert code == 400 and res["error"] == "Fill in the magnitude, target SNR and seeing."
+
+
+def test_presets_show_the_slt_cameras_by_the_labs_names(client):
+    doc = client.get("/api/exposure_time_calculator/presets").get_json()
+    cams = doc["profiles"]["lulin"]["cameras"]
+    assert cams["SLT_DZ936"]["name"] == "Andor936" and cams["SLT_DU934P"]["name"] == "Andor934"
+    assert list(cams)[:1] == ["Sophia"]          # the file's order is kept (first listed = default)
+
+
+def test_the_etc_leaves_the_flatness_term_out(client):
+    doc = client.get("/api/exposure_time_calculator/presets").get_json()
+    assert all("background_flatness_fraction" not in (c.get("camera") or {})
+               for c in doc["profiles"]["lulin"]["cameras"].values())
+    code, res = post(client, **{**BASE, "telescope": "SLT", "camera": "SLT_DU934P", "mag": 19.5}, target_snr=20)
+    assert code == 200 and res["status"] == "ok"

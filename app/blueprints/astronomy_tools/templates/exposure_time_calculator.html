@@ -23,6 +23,10 @@
             --etc-shell-height: clamp(420px, calc(100dvh - var(--etc-top, 190px) - var(--etc-bottom-gap)), 1150px);
         }
 
+        /* Kinder leaves CASTOR's background-flatness term out (helpers.NO_FLATNESS): its field is hidden and the
+           server zeroes it in every request */
+        .etc-page .etc-field:has(input[name="instrument.camera.background_flatness_fraction"]) { display: none; }
+
         /* Host-only credits at the right of the mode bar — not part of the CASTOR
            partial, so they survive verbatim re-copies of castor_etc_body.html. */
         .etc-github-note {

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # (script filter, band, CASTOR filter)
 BANDS = (('up', 'u', 'Sloan_u'), ('gp', 'g', 'Sloan_g'), ('rp', 'r', 'Sloan_r'), ('ip', 'i', 'Sloan_i'), ('zp', 'z', 'Sloan_z'))
 ALL = tuple(sf for sf, _, _ in BANDS)
-PLANS = {'all': ALL, 'gr': ('gp', 'rp'), 'r': ('rp',)}       # the shorter plans offered when the pick runs long
+PLANS = {'all': ALL, 'gri': ('gp', 'rp', 'ip'), 'gr': ('gp', 'rp'), 'r': ('rp',)}     # the shorter plans offered when the pick runs long
 DEFAULT_SNR = 20.0
 # S/N when the target sets none (the user's rule, 2026-11-26): from its brightest magnitude in the plan
 AUTO_SNR_SPLIT_MAG = 19.0
@@ -46,7 +46,71 @@ MIN_EXP_S = {'up': 300, 'gp': 150, 'rp': 150, 'ip': 150, 'zp': 300}
 MAX_EXP_S = 300               # longest single frame: a fainter target gets more 300 s frames, not longer ones
 FRAME_STEPS = (150,)          # frame lengths besides CASTOR's own (150 s: what SLT has been taking)
 SAT_MARGIN = 0.7              # a frame at most 70% of CASTOR's saturation time for the target
-SITE, TELESCOPE, CAMERA = 'lulin', 'SLT', 'SLT_DZ936'      # the SLT camera since 2026-11-03
+SITE, TELESCOPE = 'lulin', 'SLT'
+# CASTOR camera presets per telescope, with the names the lab uses; SLT has had several, the target picks one
+# (default Andor934). LOT (1 m, Sophia) reaches SLT's depth ~10x sooner, so 60 s is its shortest frame in every filter.
+CAMERAS = {'SLT': {'SLT_DU934P': 'Andor934', 'SLT_DZ936': 'Andor936'}, 'LOT': {'Sophia': 'Sophia'}}
+DEFAULT_CAMERA = {'SLT': 'SLT_DU934P', 'LOT': 'Sophia'}
+CAMERA = DEFAULT_CAMERA['SLT']
+MIN_EXP_LOT_S = 60
+
+
+_last_cache = {}
+LAST_TTL_S = 3600
+
+
+def last_camera(telescope):
+    """(CASTOR preset, last frames) for a target without its own camera: the camera the telescope's last measured
+    night was taken with (cached an hour); the telescope's default when that is unknown."""
+    import time
+    hit = _last_cache.get(telescope)
+    if not hit or time.time() - hit[0] > LAST_TTL_S:
+        try:
+            hit = (time.time(), last_frames(telescope))
+        except Exception:
+            logger.exception('auto exposure: last frames of %s', telescope)
+            hit = (time.time(), None)
+        _last_cache[telescope] = hit
+    last = hit[1]
+    by_name = {v: k for k, v in CAMERAS.get(telescope, {}).items()}
+    return (by_name.get((last or {}).get('camera')) or DEFAULT_CAMERA.get(telescope, CAMERA)), last
+
+
+def camera_for(telescope, camera=None):
+    """The CASTOR camera preset for a target: its own when the telescope has it, else the telescope's default."""
+    tel = telescope if telescope in CAMERAS else TELESCOPE
+    return camera if camera in CAMERAS[tel] else DEFAULT_CAMERA[tel]
+
+
+# a frame's camera, from its file name (..._SLT_Andor-DZ936_bin1_...): the lab's name for it
+FRAME_CAMERA_RE = re.compile(r'_(SLT|LOT)_([^_]+)_bin', re.I)
+
+
+def camera_name(token):
+    t = str(token or '')
+    for key, name in (('DZ936', 'Andor936'), ('DU934', 'Andor934'), ('U9000', 'Apogee U9000'), ('SOPHIA', 'Sophia')):
+        if key in t.upper():
+            return name
+    return t
+
+
+def last_frames(telescope, name=None):
+    """{'night', 'camera'} of the last night the automatic photometry measured frames of this telescope (of this
+    target, with name); None when there is none. All filters of a night come from the same camera."""
+    from app.db import get_db_connection
+    sql = ("SELECT night, phot FROM obs.auto_phot WHERE telescope = %s AND jsonb_array_length(phot) > 0"
+           + (r" AND regexp_replace(target, '\s+', '', 'g') = %s" if name else '') + " ORDER BY night DESC LIMIT 5")
+    args = [telescope] + ([re.sub(r'\s+', '', name)] if name else [])
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(sql, args)
+        rows = cur.fetchall()
+    for night, phot in rows:
+        for p in phot or []:
+            m = FRAME_CAMERA_RE.search(str(p.get('image') or ''))
+            if m:
+                return {'night': night.isoformat(), 'camera': camera_name(m.group(2))}
+    return None
 LULIN = ('120:52:21.5', '23:28:10.0', 2800)
 TZ8 = timezone(timedelta(hours=8))
 MIN_ALT_DEG = 20
@@ -199,8 +263,8 @@ def _castor():
     import app.paths  # noqa: F401  (puts the vendored CASTOR on sys.path)
     from castorCLI import plan, presets
     if _catalogue is None:
-        from app.blueprints.astronomy_tools.helpers import _CASTOR_PRESETS_PATH
-        _catalogue = presets.load(_CASTOR_PRESETS_PATH)
+        from app.blueprints.astronomy_tools.helpers import castor_presets
+        _catalogue = castor_presets()             # the flatness term left out (helpers.NO_FLATNESS)
     return plan, _catalogue
 
 
@@ -211,13 +275,13 @@ def _fwhm(cat):
         return 1.4
 
 
-def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None):
-    """CASTOR's plan for one filter, frames at least min_exp s (default: MIN_EXP_S of that filter):
-    {'status', 'exp', 'count', 'elapsed', 'snr', 'sat_s'} (exp None when no frame works)."""
+def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None, telescope=TELESCOPE, camera=None):
+    """CASTOR's plan for one filter on SLT (or LOT), frames at least min_exp s (default: MIN_EXP_S of that filter on
+    SLT, MIN_EXP_LOT_S on LOT): {'status', 'exp', 'count', 'elapsed', 'snr', 'sat_s'} (exp None when no frame works)."""
     if min_exp is None:
-        min_exp = next((MIN_EXP_S[sf] for sf, _, cf in BANDS if cf == castor_filter), 60)
+        min_exp = MIN_EXP_LOT_S if telescope == 'LOT' else next((MIN_EXP_S[sf] for sf, _, cf in BANDS if cf == castor_filter), 60)
     plan, cat = _castor()
-    kw = dict(site=SITE, telescope=TELESCOPE, camera=CAMERA, optic_filter=castor_filter, ra=float(ra), dec=float(dec),
+    kw = dict(site=SITE, telescope=telescope, camera=camera_for(telescope, camera), optic_filter=castor_filter, ra=float(ra), dec=float(dec),
               mag=float(mag), observing_time_utc=when.isoformat().replace('+00:00', 'Z'), fwhm=_fwhm(cat))
     r = plan.compute_plan(cat, **kw, target_snr=float(snr))
     rec, status = r.get('recommended'), r.get('status')
@@ -250,17 +314,21 @@ WHY = {'saturated': 'saturates even the shortest frame', 'unreachable': 'cannot 
        'below_horizon': 'not above the horizon tonight'}
 
 
-def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None):
+def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, detections=None, now_mjd=None,
+            telescope=TELESCOPE, camera=None):
     """The target's plan for tonight for the filters picked (choice), at its own S/N or (snr None) auto_snr's.
     Raises NoMagnitude when there is nothing to compute it from."""
     picked = selection(choice)
     mags = magnitudes(name, typed_mag, detections, now_mjd)
     snr_auto = not snr
+    camera_auto = camera not in CAMERAS.get(telescope, {})
+    if camera_auto:                         # no camera of its own: the one the telescope last used
+        camera, _ = last_camera(telescope)
     snr, brightest = (auto_snr(mags) if snr_auto else (float(snr), min(m['mag'] for m in mags.values())))
     when, alt = best_time(ra, dec, day)
     filters, notes = {}, []
     for sf, b, cf in BANDS:
-        p = plan_filter(cf, ra, dec, mags[sf]['mag'], snr, when)
+        p = plan_filter(cf, ra, dec, mags[sf]['mag'], snr, when, telescope=telescope, camera=camera)
         filters[sf] = {**p, **mags[sf]}
         if p['exp'] is None:
             notes.append(f'{b}: {WHY.get(p["status"], p["status"])}')
@@ -274,7 +342,8 @@ def compute(name, ra, dec, typed_mag=None, snr=None, choice=None, day=None, dete
     if alt < MIN_ALT_DEG:
         notes.append(f'highest tonight only {alt:.0f}°')
     return {'computed_at': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'night': (day or datetime.now(TZ8).date()).isoformat(),
-            'when': when.isoformat(), 'alt': round(alt, 1), 'snr': snr, 'snr_auto': snr_auto, 'brightest': round(brightest, 2), 'selected': picked, 'total_s': total,
+            'when': when.isoformat(), 'alt': round(alt, 1), 'telescope': telescope, 'camera': camera_for(telescope, camera),
+            'camera_name': CAMERAS[telescope][camera_for(telescope, camera)], 'camera_auto': camera_auto, 'snr': snr, 'snr_auto': snr_auto, 'brightest': round(brightest, 2), 'selected': picked, 'total_s': total,
             'filters': filters, 'options': options, 'plan': plan, 'too_long': total > MAX_TOTAL_S,
             'max_total_s': MAX_TOTAL_S, 'min_exp_s': MIN_EXP_S, 'notes': notes, 'latest': _latest(mags)}
 
@@ -298,17 +367,18 @@ def apply(target, **kw):
     """Compute and store one target's plan (its filters follow it). Returns the result, or raises NoMagnitude."""
     from app.db.obs import set_auto_exposure_result
     res = compute(target['name'], target['ra'], target['dec'], target.get('mag'), target.get('auto_snr') or None,
-                  target.get('auto_plan'), **kw)
+                  target.get('auto_plan'), telescope=(target.get('telescope') or TELESCOPE).upper(),
+                  camera=target.get('auto_camera'), **kw)
     set_auto_exposure_result(target['id'], res, filters=res['plan'] or None, mag=latest_mag(res))
     return res
 
 
 def update_all(day=None):
-    """Every active SLT auto-exposure target: tonight's plan from its latest magnitudes. A summary line."""
+    """Every active auto-exposure target (SLT and LOT): tonight's plan from its latest magnitudes. A summary line."""
     from app.db.obs import get_observation_targets, set_auto_exposure_result
     done, failed = 0, []
     for t in get_observation_targets(active_only=True):
-        if not t.get('auto_exposure') or (t.get('telescope') or '').upper() != 'SLT':
+        if not t.get('auto_exposure') or (t.get('telescope') or '').upper() not in CAMERAS:
             continue
         try:
             apply(t, day=day)

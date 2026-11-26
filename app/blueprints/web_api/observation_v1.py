@@ -130,10 +130,7 @@ def api_v1_observation_targets():
     ra        = _limit_decimal_4(str(data.get('ra') or '').strip())
     dec       = _limit_decimal_4(str(data.get('dec') or '').strip())
     mag       = _limit_decimal_4(data.get('mag'))
-    # LOT never uses auto exposure
-    auto_exposure = bool(data.get('auto_exposure', False))
-    if telescope == 'LOT':
-        auto_exposure = False
+    auto_exposure = bool(data.get('auto_exposure', False))     # SLT and LOT (CASTOR plans both)
 
     if not telescope or telescope not in ('SLT', 'LOT'):
         return jsonify({'success': False, 'error': 'telescope is required and must be SLT or LOT'}), 400

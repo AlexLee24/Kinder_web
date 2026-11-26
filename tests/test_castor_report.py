@@ -58,7 +58,7 @@ def test_right_password_opens_the_report(client, report):
     page = client.get(URL).get_data(as_text=True)
     assert 'Test report' in page and 'Secret finding' in page
     assert 'AT2026ajog' in page and 'stack ×6' in page and 'SN2025wny' in page
-    assert page.index('LOT · Sophia 2048B · g') < page.index('LOT · Sophia 2048B · r') < page.index('SLT · Andor iKon-L DZ936 · r')
+    assert page.index('LOT · Sophia 2048B · g') < page.index('LOT · Sophia 2048B · r') < page.index('SLT · Andor936 · r')
     # Lock forgets it
     client.post(URL + '/lock')
     assert 'AT2026ajog' not in client.get(URL).get_data(as_text=True)
@@ -91,7 +91,7 @@ def test_password_tries_are_limited(client, report):
 def test_groups_and_medians():
     g = cr.groups(ROWS)
     assert [(x['tel'], x['band']) for x in g] == [('LOT', 'g'), ('LOT', 'r'), ('SLT', 'r')]
-    assert g[1]['ratio'] == (0.87, 0.87, 0.87) and g[2]['camera'] == 'Andor iKon-L DZ936'
+    assert g[1]['ratio'] == (0.87, 0.87, 0.87) and g[2]['camera'] == 'Andor936'
 
 
 def test_the_page_is_not_linked_from_the_site(client):
