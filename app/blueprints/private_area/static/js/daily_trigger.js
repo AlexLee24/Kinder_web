@@ -3198,6 +3198,15 @@ function _buildScriptPayloadTarget(t) {
     return item;
 }
 
+// The message before the script: the greeting, then each target's note ("無" without one)
+function _triggerGreeting(telescope, program, targets) {
+    const head = program
+        ? `您好，若天氣允許使用 ${telescope}，以下是 "${program}" 今日的觀測目標:`
+        : `您好，若天氣允許使用 ${telescope}，以下是今日的觀測目標:`;
+    const notes = (targets || []).map(t => `${t.name}: ${String(t.priority_message || '').replace(/\s+/g, ' ').trim() || '無'}`);
+    return [head, '目標註記', ...notes].join('\n') + '\n\n';
+}
+
 async function generateTriggerScriptMessage() {
     const checkboxes = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox');
     const done = document.querySelectorAll('#trigger-checklist .pa-checklist-checkbox:checked').length;
@@ -3253,13 +3262,7 @@ async function generateTriggerScriptMessage() {
             return;
         }
 
-        const greetingZh = scriptProgram
-            ? `您好，若天氣允許使用 ${scriptTelescope}，以下是 "${scriptProgram}" 今日的觀測目標:`
-            : `您好，若天氣允許使用 ${scriptTelescope}，以下是今日的觀測目標:`;
-        const greetingEn = scriptProgram
-            ? `If the weather permits to use ${scriptTelescope}, here are today's "${scriptProgram}" observation targets:`
-            : `If the weather permits to use ${scriptTelescope}, here are today's observation targets:`;
-        const greeting = greetingZh + '\n' + greetingEn + '\n\n';
+        const greeting = _triggerGreeting(scriptTelescope, scriptProgram, payloadTargets);
         textarea.value = greeting + data.script;
 
         // Kept separately (rather than re-parsed from the textarea) so the Slack
@@ -3635,9 +3638,7 @@ async function startSingleTargetTriggerFlow(targetData, targetId) {
             return;
         }
 
-        const greeting =
-            `您好，若天氣允許使用 ${targetData.telescope}，以下是今日的觀測目標:\n` +
-            `If the weather permits to use ${targetData.telescope}, here are today's observation targets:\n\n`;
+        const greeting = _triggerGreeting(targetData.telescope, '', [payloadTarget]);
         document.getElementById('single-trigger-script-preview').value = greeting + data.script;
 
         _singleTriggerState = {
