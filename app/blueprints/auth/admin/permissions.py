@@ -2,7 +2,7 @@
 
 - Actions: who may upload / delete spectra and photometry (app/core/permissions.py).
 - Check someone: what one account may do and open, with the reason.
-- Private pages: extra groups per GREAT Lab page (private_area/page_perms.py API).
+- Lab access: who opens the Lab and each of its pages (private_area/lab_pages.py, page_perms.py API).
 - Source visibility: default visibility per photometry / spectra source (settings.py API).
 admin_permissions.js drives the page from the JSON in #permData.
 """
@@ -28,17 +28,12 @@ def _who(users, rules, action):
     return sorted(out, key=lambda e: (users[e].get('name') or e).lower())
 
 
-def _private_pages():
-    from app.blueprints.private_area.helpers import _PRIVATE_PAGE_LABELS, _PRIVATE_PAGES
-    return _PRIVATE_PAGES, _PRIVATE_PAGE_LABELS
-
-
 @admin_bp.route('/admin/permissions')
 @admin_required_page
 def permissions_page():
     users = get_users()
     rules = perms.get_rules(fresh=True)
-    pages, labels = _private_pages()
+    from app.blueprints.private_area import lab_pages
     data = {
         'levels': [{'key': k, 'label': v} for k, v in perms.LEVELS.items()],
         'actions': [{'key': key, 'area': area, 'label': label, 'desc': desc,
@@ -46,7 +41,7 @@ def permissions_page():
                     for key, (area, label, desc, default) in perms.ACTIONS.items()],
         'people': [_person(e, u) for e, u in sorted(users.items(), key=lambda kv: (kv[1].get('name') or kv[0]).lower())],
         'groups': sorted(get_groups().keys()),
-        'pages': [{'key': p, 'label': labels.get(p, p)} for p in pages],
+        'pages': [{'key': p, 'label': lab_pages.PAGE_LABELS[p]} for p in lab_pages.PAGES],
         'me': (session.get('user') or {}).get('email'),
     }
     return render_template('admin_permissions.html', current_path='/admin/permissions', data=data,
@@ -93,28 +88,16 @@ def permissions_check():
     u = next((dict(v, email=k) for k, v in users.items() if k.lower() == email.lower()), None)
     if not u:
         return jsonify({'success': False, 'error': 'Unknown account'}), 404
-    from app.blueprints.private_area.helpers import _get_page_extra_groups, page_level, user_can_access_page
+    from app.blueprints.private_area import lab_pages
     rules = perms.get_rules()
     actions = []
     for key, (_area, label, _desc, _default) in perms.ACTIONS.items():
         ok, why = perms.explain(u, key, rules)
         actions.append({'key': key, 'label': label, 'allowed': ok, 'why': why})
-    pages, labels = _private_pages()
-    groups = set(u.get('groups') or [])
     page_rows = []
-    for p in pages:
-        ok = user_can_access_page(u, p)
-        if u.get('is_admin'):
-            why = 'admin'
-        else:
-            hit = sorted(groups & set(_get_page_extra_groups(p)))
-            admins_only = page_level(p) == 'admin'
-            if 'GREAT_Lab' in groups and not admins_only:
-                why = 'GREAT Lab member'
-            elif hit:
-                why = f'group {hit[0]}'
-            else:
-                why = 'admins only, no added group' if admins_only else 'not GREAT Lab, no added group'
-        page_rows.append({'key': p, 'label': labels.get(p, p), 'allowed': ok, 'why': why})
+    for p in [lab_pages.LAB_KEY] + lab_pages.PAGES:
+        ok, why = lab_pages.explain(u, p)
+        page_rows.append({'key': p, 'label': 'Lab (whole section)' if p == lab_pages.LAB_KEY else lab_pages.PAGE_LABELS[p],
+                          'allowed': ok, 'why': why})
     return jsonify({'success': True, 'person': _person(u['email'], u), 'is_admin': bool(u.get('is_admin')),
                     'actions': actions, 'pages': page_rows})

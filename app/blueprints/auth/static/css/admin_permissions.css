@@ -67,3 +67,13 @@
 .apm-builtin-name { font-size: 0.84rem; color: var(--text); font-style: italic; }
 .apm-builtin-vis { font-size: 0.84rem; padding-left: 2px; }
 @media (max-width: 560px) { .apm-jump { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } }   /* phones: 2 x 2, no lone last button */
+
+/* Lab access: the Lab rule on top, then one row of page cards per sidebar group */
+.pperm-wrap { display: flex; flex-direction: column; gap: 18px; }
+.pperm-lab-row .pperm-lab { max-width: 560px; border-color: color-mix(in srgb, var(--kw-accent) 45%, transparent); background: color-mix(in srgb, var(--kw-accent) 7%, var(--kw-card-bg-2)); }
+.pperm-group { display: flex; flex-direction: column; gap: 8px; }
+.pperm-group-h { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--kw-text-secondary); }
+.pperm-title { display: flex; flex-direction: column; gap: 2px; }
+.pperm-title small { font-size: max(0.74rem, 11px); font-weight: 400; color: var(--kw-text-muted); line-height: 1.45; }
+.pperm-follow { font-size: max(0.8rem, 11px); color: var(--kw-text-muted); align-self: center; }
+.pperm-warn { margin: 0; font-size: max(0.78rem, 11px); color: #f5c26b; line-height: 1.45; }

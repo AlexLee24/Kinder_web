@@ -149,7 +149,7 @@
                     ${d.person.groups.length ? d.person.groups.map((g) => `<span class="perm-tag">${esc(g)}</span>`).join('') : '<span class="cell-muted">no groups</span>'}</div>
                 <div class="apm-check-cols">
                     <div><h4>Actions</h4><ul class="apm-check-list">${d.actions.map(row).join('')}</ul></div>
-                    <div><h4>Private pages</h4><ul class="apm-check-list">${d.pages.map(row).join('')}</ul></div>
+                    <div><h4>Lab pages</h4><ul class="apm-check-list">${d.pages.map(row).join('')}</ul></div>
                 </div>`;
         } catch (e) {
             out.innerHTML = `<p class="kw-empty">${esc(e.message)}</p>`;
@@ -159,37 +159,57 @@
     $('apmCheckInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); check(); } });
     $('apmCheckInput').addEventListener('change', check);
 
-    // ── Private pages ────────────────────────────────────────────────────────
-    let pagePerms = {}, pageLevels = {}, levelLabels = {};
+    // ── Lab access ───────────────────────────────────────────────────────────
+    // 'lab' = the Lab as a whole (nobody but admins gets past it); each page has its own rule or "Same as Lab".
+    // The page list comes from the server (private_area/lab_pages.py LAB_NAV), so new Lab pages show up here.
+    let pagePerms = {}, pageLevels = {}, levelLabels = {}, labLevelLabels = {}, labNav = [];
     async function loadPages() {
         try {
             const d = await call('/api/admin/private_area/page_perms');
             pagePerms = d.perms || {};
             pageLevels = d.levels || {};
-            levelLabels = d.level_labels || {member: 'GREAT Lab members', admin: 'Admins only'};
+            levelLabels = d.level_labels || {};
+            labLevelLabels = d.lab_level_labels || {};
+            labNav = d.nav || [];
             renderPages();
         } catch (e) {
             $('apmPages').innerHTML = `<div class="kw-empty">Could not load: ${esc(e.message)}</div>`;
         }
     }
-    function renderPages() {
-        const choices = GROUPS.filter((g) => g !== 'GREAT_Lab');
-        $('apmPages').innerHTML = (D.pages || []).map((pg) => {
-            const extra = (pagePerms[pg.key] || []).filter((g) => g !== 'GREAT_Lab');
-            const opts = choices.filter((g) => !extra.includes(g)).map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
-            const lvl = pageLevels[pg.key] || 'member';
-            const lvlOpts = Object.entries(levelLabels).map(([k, v]) => `<option value="${esc(k)}"${k === lvl ? ' selected' : ''}>${esc(v)}</option>`).join('');
-            const base = lvl === 'admin'
-                ? '<span class="perm-tag perm-locked" title="Only admins, plus the groups added here">Admins</span>'
-                : '<span class="perm-tag perm-locked" title="Always has access">GREAT_Lab</span>';
-            return `<div class="pperm-card" data-page="${esc(pg.key)}">
-                <div class="pperm-title">${esc(pg.label)}</div>
-                <select class="kw-select kw-select-sm" data-page-level aria-label="Who can open ${esc(pg.label)}">${lvlOpts}</select>
-                <div class="pperm-tags">${base}${extra.map((g) => chip(g, `data-rm-page-group="${esc(g)}"`)).join('')}</div>
-                ${opts ? `<div class="pperm-add"><select class="kw-select kw-select-sm" data-add-page-group aria-label="Add a group"><option value="">Add a group…</option>${opts}</select></div>` : ''}
-            </div>`;
-        }).join('');
+    const BASE = { signed_in: 'Signed-in users', member: 'GREAT_Lab', admin: 'Admins' };
+    function ruleCard(key, label, sub, isLab) {
+        const lvl = pageLevels[key] || (isLab ? 'member' : 'lab');
+        const labels = isLab ? labLevelLabels : levelLabels;
+        const lvlOpts = Object.entries(labels).map(([k, v]) => `<option value="${esc(k)}"${k === lvl ? ' selected' : ''}>${esc(v)}</option>`).join('');
+        const follows = !isLab && lvl === 'lab';
+        const extra = (pagePerms[key] || []).filter((g) => g !== 'GREAT_Lab');
+        const choices = GROUPS.filter((g) => g !== 'GREAT_Lab' && !extra.includes(g));
+        const opts = choices.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+        // A group added to a page but not let into the Lab cannot reach the page.
+        const labLvl = pageLevels.lab || 'member';
+        const labGroups = pagePerms.lab || [];
+        const stuck = isLab || follows || labLvl === 'signed_in' ? [] : extra.filter((g) => !labGroups.includes(g));
+        const tags = follows
+            ? `<span class="pperm-follow">Same people as the Lab</span>`
+            : `<span class="perm-tag perm-locked">${esc(BASE[lvl] || lvl)}</span>${extra.map((g) => chip(g, `data-rm-page-group="${esc(g)}"`)).join('')}`;
+        return `<div class="pperm-card${isLab ? ' pperm-lab' : ''}" data-page="${esc(key)}">
+            <div class="pperm-title">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</div>
+            <select class="kw-select kw-select-sm" data-page-level aria-label="Who can open ${esc(label)}">${lvlOpts}</select>
+            <div class="pperm-tags">${tags}</div>
+            ${!follows && opts ? `<div class="pperm-add"><select class="kw-select kw-select-sm" data-add-page-group aria-label="Add a group to ${esc(label)}"><option value="">Add a group…</option>${opts}</select></div>` : ''}
+            ${stuck.length ? `<p class="pperm-warn">${stuck.map(esc).join(', ')} also need${stuck.length > 1 ? '' : 's'} Lab access to open this page.</p>` : ''}
+        </div>`;
     }
+    function renderPages() {
+        const lab = ruleCard('lab', 'Lab', 'Whole section: hides Lab from the sidebar and closes every Lab page for everyone it leaves out', true);
+        const groups = labNav.map((grp) => `
+            <div class="pperm-group">
+                <h3 class="pperm-group-h">${esc(grp.label)}</h3>
+                <div class="pperm-grid">${grp.pages.map((pg) => ruleCard(pg.key, grp.pages.length > 1 ? pg.label : grp.label, pg.href, false)).join('')}</div>
+            </div>`).join('');
+        $('apmPages').innerHTML = `<div class="pperm-lab-row">${lab}</div>${groups}`;
+    }
+    const pageName = (key) => key === 'lab' ? 'Lab' : (labNav.flatMap((g) => g.pages).find((p) => p.key === key) || {}).label || key;
     $('apmPages').addEventListener('change', async (ev) => {
         const lv = ev.target.closest('[data-page-level]');
         if (lv) {
@@ -197,7 +217,7 @@
             try {
                 await call('/api/admin/private_area/page_level', 'POST', { page, level: lv.value });
                 pageLevels[page] = lv.value;
-                toast(`${page.replace(/_/g, ' ')}: ${levelLabels[lv.value]}`, 'success');
+                toast(`${pageName(page)}: ${(page === 'lab' ? labLevelLabels : levelLabels)[lv.value]}`, 'success');
             } catch (e) { toast(e.message, 'error'); }
             renderPages();
             return;
@@ -208,7 +228,7 @@
         try {
             await call('/api/admin/private_area/page_perms', 'POST', { page, group_name: sel.value });
             pagePerms[page] = (pagePerms[page] || []).concat(sel.value);
-            toast(`${sel.value} can now open ${page.replace(/_/g, ' ')}`, 'success');
+            toast(`${sel.value} can now open ${pageName(page)}`, 'success');
         } catch (e) { toast(e.message, 'error'); }
         renderPages();
     });
@@ -217,7 +237,7 @@
         if (!rm) return;
         const page = rm.closest('[data-page]').dataset.page;
         const g = rm.dataset.rmPageGroup;
-        if (!confirm(`Remove ${g}'s access to ${page.replace(/_/g, ' ')}?`)) return;
+        if (!confirm(`Remove ${g}'s access to ${pageName(page)}?`)) return;
         try {
             await call('/api/admin/private_area/page_perms', 'DELETE', { page, group_name: g });
             pagePerms[page] = (pagePerms[page] || []).filter((x) => x !== g);

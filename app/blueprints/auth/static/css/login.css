@@ -68,3 +68,6 @@
 .login-card .field span { font-size: var(--kw-text-xs); font-weight: 600; color: var(--kw-text-secondary); letter-spacing: 0.02em; }
 .admin-input { min-height: 40px; }
 .admin-login-btn { width: 100%; min-height: 44px; font-size: 0.92rem; }
+.login-legal { margin-top: 20px; }
+.login-legal a { color: var(--kw-text-secondary); text-decoration: underline; text-underline-offset: 2px; }
+.login-legal a:hover { color: var(--kw-text-white); }

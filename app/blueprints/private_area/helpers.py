@@ -15,7 +15,6 @@ from flask import session
 from werkzeug.security import generate_password_hash
 from werkzeug.utils import secure_filename
 
-from app.db.auth import get_page_groups
 
 from . import private_area_bp
 
@@ -104,54 +103,31 @@ def can_view_private_area():
 # ---------------------------------------------------------------------------
 # Per-page permission helpers
 # ---------------------------------------------------------------------------
-_PRIVATE_PAGES = ['daily_trigger', 'direct_trigger', 'pipeline', 'greatlab_info', 'epessto_support', 'documents', 'bots', 'lab_calendar',
-                  'special_run_euclid_slsn', 'special_run_lens_sim']
-
-_PRIVATE_PAGE_LABELS = {
-    'daily_trigger': 'Daily Trigger',
-    'direct_trigger': 'Direct Trigger',
-    'pipeline': 'Pipeline (AutoPhOT)',
-    'greatlab_info': 'Lab Info',
-    'epessto_support': 'ePessto++ Support',
-    'documents': 'Documents',
-    'bots': 'Lab Bots',
-    'lab_calendar': 'Lab Calendar',
-    'special_run_euclid_slsn': 'Special Run › Euclid-SLSN',
-    'special_run_lens_sim': 'Special Run › Lens Simulator',
-}
-
-# Euclid-SLSN keeps the groups of the old single 'special_run' key until it is set on its own.
-_PAGE_FALLBACK = {'special_run_euclid_slsn': 'special_run'}
-
-# Who opens a private page besides the groups added to it (Admin › Permissions):
-#   'member' = admins + GREAT Lab members (the default) · 'admin' = admins only
-PAGE_LEVELS = {'member': 'GREAT Lab members', 'admin': 'Admins only'}
-_PAGE_DEFAULT_LEVEL = {'special_run_lens_sim': 'admin'}
+# Lab pages, their labels and who opens them live in lab_pages.py (one list for nav, admin and the gate).
+from . import lab_pages as _lab
+_PRIVATE_PAGES = _lab.PAGES
+_PRIVATE_PAGE_LABELS = _lab.PAGE_LABELS
+PAGE_LEVELS = _lab.PAGE_LEVELS
 
 
 def page_level(page_key: str) -> str:
-    from app.db.auth import get_setting
-    v = get_setting(f'page_level:{page_key}')
-    return v if v in PAGE_LEVELS else _PAGE_DEFAULT_LEVEL.get(page_key, 'member')
+    return _lab.level(page_key)
 
 
 def set_page_level(page_key: str, level: str) -> bool:
     from app.db.auth import set_setting
-    return bool(set_setting(f'page_level:{page_key}', level))
+    ok = bool(set_setting(f'page_level:{page_key}', level))
+    _lab.forget_cached()
+    return ok
 
 
 def _get_page_extra_groups(page_key: str) -> list:
-    """Return list of extra group names (beyond GREAT_Lab) that can access the page."""
-    return get_page_groups(page_key, _PAGE_FALLBACK.get(page_key))
+    """Groups added to a Lab page (or to the whole Lab, key 'lab')."""
+    return _lab.groups(page_key)
 
 def user_can_access_page(user: dict, page_key: str) -> bool:
-    """Admins always; GREAT Lab members unless the page is admins only; else one of the page's added groups."""
-    groups = set(user.get('groups') or [])
-    if user.get('is_admin'):
-        return True
-    if ('GREAT_Lab' in groups or user.get('is_great_lab_member')) and page_level(page_key) == 'member':
-        return True
-    return bool(groups & set(_get_page_extra_groups(page_key)))
+    """Admins always; otherwise the Lab rule and then the page's own rule (see lab_pages.py)."""
+    return _lab.user_can_open(user, page_key)
 
 def can_access_page(page_key: str) -> bool:
     """Check if the current session user can access the given private page."""

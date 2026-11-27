@@ -1,6 +1,6 @@
 {% extends '_base.html' %}
 {#- Admin › Permissions (admin/permissions.py): who may do what (actions), what one person may do (check),
-    extra groups per private page, default visibility per data source. admin_permissions.js renders it
+    who opens the Lab and each Lab page, default visibility per data source. admin_permissions.js renders it
     from #permData; it saves each change as it is made (source visibility: Save all). -#}
 {% block title %}Permissions - Kinder{% endblock %}
 {% block head %}
@@ -15,13 +15,13 @@
 {% include '_admin_nav.html' %}
 <div class="kw-page admin-page apm-page" id="apmPage">
     <header class="kw-page-head adm-head">
-        <div><h1>Permissions</h1><p>Who may upload and change data, who can open each private page, and who sees each data source. Admins can always do everything. Changes save as you make them.</p></div>
+        <div><h1>Permissions</h1><p>Who may upload and change data, who can open the Lab and each of its pages, and who sees each data source. Admins can always do everything. Changes save as you make them.</p></div>
     </header>
 
     <nav class="apm-jump" aria-label="Sections">
         <a href="#apm-actions" class="kw-btn kw-btn-sm">Actions</a>
         <a href="#apm-check" class="kw-btn kw-btn-sm">Check someone</a>
-        <a href="#apm-pages" class="kw-btn kw-btn-sm">Private pages</a>
+        <a href="#apm-pages" class="kw-btn kw-btn-sm">Lab access</a>
         <a href="#apm-sources" class="kw-btn kw-btn-sm">Source visibility</a>
     </nav>
 
@@ -50,10 +50,10 @@
     <!-- Private pages -->
     <section class="kw-panel" id="apm-pages" aria-labelledby="apmPagesT">
         <div class="kw-panel-head">
-            <h2 id="apmPagesT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Private pages</h2>
+            <h2 id="apmPagesT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Lab access</h2>
         </div>
-        <p class="kw-panel-desc"><em>GREAT_Lab</em> members and admins can always open every private page. Add other groups per page.</p>
-        <div id="apmPages" class="pperm-grid"><div class="kw-muted">Loading…</div></div>
+        <p class="kw-panel-desc">The Lab rule decides who sees the Lab at all. Each page then has its own rule, or follows the Lab. Admins can always open everything. Pages added to the Lab show up here by themselves.</p>
+        <div id="apmPages" class="pperm-wrap"><div class="kw-muted">Loading…</div></div>
     </section>
 
     <!-- Source visibility -->

@@ -1,215 +1,97 @@
 {% extends '_base.html' %}
-{#- One GREAT Lab document (Markdown, rendered by document_view.js; admins can edit it). -#}
-{% block title %}{{ title }} - Documents - Kinder{% endblock %}
+{#- One GREAT Lab document, laid out like EAU's article reader: cover, title + summary, a side rail with byline,
+    contents and time left (desktop), a fold-out contents block on phones, then "Keep reading" in the same
+    category. document_view.js loads the Markdown from /api/documents/<f>/content ({{ '{{' }}hide=KEY{{ '}}' }}
+    filled in for members) and renders it with marked + DOMPurify. -#}
+{% block title %}{{ doc.title }} - Docs - Kinder{% endblock %}
 {% block head %}
-    <meta name="description" content="{{ title }}">
-    <!-- Marked.js for Markdown parsing -->
+    <meta name="description" content="{{ doc.summary or doc.title }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/documents.css') }}">
     <script src="{{ url_for('static', filename='vendor/marked-18.0.14.umd.js') }}" integrity="sha384-2vpGtuKqJvFlwJqYnf/wUMuzUfhUnYBt9oay0e2yaFcq0Dh6/aEbQ8YAOeKGzlYo"></script>
     <script src="{{ url_for('static', filename='vendor/purify-3.4.16.min.js') }}" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL"></script>
-    <style>
-        .doc-page .kw-page-head { margin: 0; }
-        .doc-page .kw-page-head h1 { overflow-wrap: anywhere; }
-
-        /* ── Rendered Markdown ── */
-        .markdown-content {
-            max-width: 48rem;
-            color: var(--kw-text-primary);
-            line-height: 1.65;
-            font-size: 1rem;
-            overflow-wrap: anywhere;
-        }
-        .markdown-content > :first-child { margin-top: 0; }
-        .markdown-content h1,
-        .markdown-content h2,
-        .markdown-content h3,
-        .markdown-content h4,
-        .markdown-content h5,
-        .markdown-content h6 {
-            display: block;
-            color: var(--kw-text-white);
-            border-bottom: 1px solid var(--kw-hairline);
-            padding-bottom: 8px;
-            margin: 1.5em 0 0.6em;
-            line-height: 1.3;
-            text-align: left;
-        }
-        .markdown-content h1 { font-size: 1.6rem; }
-        .markdown-content h2 { font-size: 1.3rem; }
-        .markdown-content h3 { font-size: 1.12rem; border-bottom: 0; padding-bottom: 0; }
-        .sh-pagebar .back-link.kw-btn-ghost { padding-left: 2px; }
-        .markdown-content h4, .markdown-content h5, .markdown-content h6 { font-size: 1rem; border-bottom: 0; padding-bottom: 0; }
-        .markdown-content p { margin: 1em 0; }
-        .markdown-content a { color: var(--kw-accent); text-decoration: none; }
-        .markdown-content a:hover { color: var(--kw-accent-hover); text-decoration: underline; }
-        .markdown-content ul,
-        .markdown-content ol { margin: 1em 0; padding-left: 22px; }
-        .markdown-content li { margin-bottom: 0.5em; }
-        .markdown-content hr { border: 0; border-top: 1px solid var(--kw-border); margin: 1.5em 0; }
-        .markdown-content code {
-            background: rgba(255, 255, 255, 0.08);
-            padding: 2px 6px;
-            border-radius: var(--kw-radius-sm);
-            font-family: var(--kw-font-mono);
-            font-size: max(0.88em, 11px);
-        }
-        .markdown-content pre {
-            background: rgba(0, 0, 0, 0.35);
-            padding: 14px 16px;
-            border-radius: var(--kw-radius-md);
-            overflow-x: auto;
-            border: 1px solid var(--kw-hairline);
-        }
-        .markdown-content pre code { background: transparent; padding: 0; border-radius: 0; font-size: max(0.88em, 11px); overflow-wrap: normal; }
-        .markdown-content blockquote {
-            border-left: 3px solid var(--kw-accent);
-            margin: 1em 0;
-            padding: 10px 15px;
-            color: var(--kw-text-secondary);
-            background: var(--kw-card-bg-2);
-            border-radius: 0 var(--kw-radius-sm) var(--kw-radius-sm) 0;
-        }
-        .markdown-content img { max-width: 100%; height: auto; border-radius: var(--kw-radius-md); margin: 1em 0; }
-        .markdown-content table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 1em 0; }
-        .markdown-content th,
-        .markdown-content td { border: 1px solid var(--kw-border); padding: 8px 12px; text-align: left; overflow-wrap: normal; }
-        .markdown-content th { background: rgba(255, 255, 255, 0.06); color: var(--kw-text-white); }
-        .loading-doc { text-align: center; padding: 40px; color: var(--kw-text-muted); }
-
-        /* ── Admin editing (Edit / Save / Cancel sit in the page bar) ── */
-        #toggleEditBtn, #saveDocBtn, #cancelEditBtn { line-height: 30px; }   /* document_view.js shows them as inline-block */
-        .doc-status { color: var(--kw-text-secondary); font-size: 0.82rem; }
-        .doc-editor-hint { margin-bottom: 16px; }
-        .doc-editor-hint p { margin: 0 0 8px; color: var(--kw-text-primary); }
-        .doc-editor-hint ul { list-style: none; padding-left: 0; margin: 0; color: var(--kw-text-secondary); font-size: 0.88rem; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-        .doc-editor-hint code { font-family: var(--kw-font-mono); font-size: max(0.85em, 11px); padding: 1px 5px; border-radius: var(--kw-radius-sm); background: rgba(255, 255, 255, 0.08); }
-        .doc-editor-container { height: 600px; gap: 16px; align-items: stretch; }
-        .doc-editor {
-            box-sizing: border-box;
-            width: 50%;
-            height: 100%;
-            min-height: 0;
-            margin: 0;
-            padding: 14px;
-            resize: none;
-            border-radius: var(--kw-radius-md);
-            font-family: var(--kw-font-mono);
-            font-size: 0.92rem;
-            line-height: 1.5;
-        }
-        .doc-preview-pane {
-            width: 50%;
-            padding: 14px 20px;
-            overflow-y: auto;
-            box-sizing: border-box;
-            border-radius: var(--kw-radius-md);
-            background: var(--kw-card-bg-2);
-            border: 1px solid var(--kw-border);
-        }
-
-        /* ── Scroll to top ── */
-        .scroll-to-top {
-            position: fixed; bottom: 30px; right: 30px;
-            opacity: 0; pointer-events: none;
-            width: 44px; height: 44px; padding: 0;
-            display: flex; align-items: center; justify-content: center;
-            border: none; border-radius: 50%;
-            background: var(--kw-accent); color: var(--color-accent-text);
-            box-shadow: var(--kw-shadow);
-            cursor: pointer; z-index: 1000;
-            transition: opacity 0.3s, transform 0.2s, background-color 0.3s;
-        }
-        .scroll-to-top:hover { background: var(--kw-accent-hover); transform: translateY(-3px); }
-
-        @media (max-width: 860px) {
-            .doc-editor-container { flex-direction: column; height: auto; }
-            .doc-editor, .doc-preview-pane { width: 100%; }
-            .doc-editor { min-height: 360px; }
-            .doc-preview-pane { max-height: 60vh; }
-            .doc-editor-hint ul { grid-template-columns: 1fr; }
-        }
-    </style>
 {% endblock %}
 
 {% block bar_left %}
-    <a href="{{ url_for('private_area.documents_list') }}" class="kw-btn kw-btn-sm kw-btn-ghost back-link">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-        Back to documents
+    <a href="{{ url_for('private_area.documents_list') }}" class="kw-btn kw-btn-sm kw-btn-ghost">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        All documents
     </a>
 {% endblock %}
-{% block bar_right %}{% if is_admin %}
-    <span class="doc-status" id="docStatusText"></span>
-    <button class="kw-btn kw-btn-sm" id="toggleEditBtn" type="button" {% if not documents_editable %}disabled{% endif %}>Edit document</button>
-    <button class="kw-btn kw-btn-sm kw-btn-primary" id="saveDocBtn" type="button" style="display:none;" {% if not documents_editable %}disabled{% endif %}>Save changes</button>
-    <button class="kw-btn kw-btn-sm kw-btn-ghost" id="cancelEditBtn" type="button" style="display:none;" {% if not documents_editable %}disabled{% endif %}>Cancel</button>
+{% block bar_right %}{% if is_admin and documents_editable %}
+    <a href="{{ url_for('private_area.document_edit', filename=filename) }}" class="kw-btn kw-btn-sm">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Edit
+    </a>
 {% endif %}{% endblock %}
 
 {% block content %}
-<div class="kw-page doc-page">
-    <header class="kw-page-head">
-        <div>
-            <span class="kw-eyebrow">Documents</span>
-            <h1>{{ title }}</h1>
-        </div>
-    </header>
+<div class="doc-progress" aria-hidden="true"><span id="docProgress"></span></div>
+<article class="kw-page doc-read" id="docRead" data-filename="{{ filename }}" data-title="{{ doc.title }}" data-minutes="{{ doc.minutes }}">
+    {% if doc.cover %}
+    <figure class="doc-read-cover"><img src="{{ doc.cover }}" alt="" decoding="async" fetchpriority="high" data-zoom></figure>
+    {% endif %}
 
-    <section class="kw-panel doc-panel">
-        <!-- Markdown Viewer/Editor -->
-        <div id="content" class="markdown-content">
-            <div class="loading-doc">Loading document content...</div>
-        </div>
+    <div class="doc-read-grid">
+        <header class="doc-read-head">
+            {% if doc.draft %}<p class="doc-draft-flag" role="status">Draft: only admins can see it until it is published.</p>{% endif %}
+            <a class="doc-read-cat" href="{{ url_for('private_area.documents_list', category=doc.category) }}">{{ doc.category_label }}</a>
+            <h1 class="doc-read-title">{{ doc.title }}</h1>
+            {% if doc.summary %}<p class="doc-read-dek">{{ doc.summary }}</p>{% endif %}
+        </header>
 
-        {% if is_admin %}
-        <div id="editorHint" class="doc-editor-hint kw-inset" style="display: none;">
-            <p><strong>Markdown Guide:</strong></p>
-            <ul>
-                <li><code># H1</code> | <code>## H2</code> | <code>### H3</code></li>
-                <li><code>**Bold**</code> | <code>*Italic*</code></li>
-                <li><code>[Link](https://...)</code> | <code>&lt;br&gt;</code> (Line Break)</li>
-                <li><code>- List</code> | <code>1. Ordered</code></li>
-                <li><code>&amp;emsp;</code> (Indent) | <code>---</code> (Divider)</li>
-                <li><code>{{ '{{' }}hide=KEY{{ '}}' }}</code> (Env Secret)</li>
-                <li style="grid-column: 1 / -1; margin-top: 4px; color: #98c379;">
-                    <strong>Images:</strong> Paste directly to upload & insert.
-                </li>
-                <li style="grid-column: 1 / -1; color: #e06c75;">
-                    <strong>Code:</strong> Use <code>```</code> to preserve indentation.
-                </li>
-            </ul>
+        <div class="doc-read-side">
+            <p class="doc-byline">
+                <span class="doc-post-avatar" aria-hidden="true">{% if doc.author_picture %}<img src="{{ doc.author_picture }}" alt="" referrerpolicy="no-referrer">{% else %}{{ doc.author[:1]|upper }}{% endif %}</span>
+                <span>{{ doc.author }}</span>
+            </p>
+            <p class="doc-read-meta">
+                <time datetime="{{ doc.updated }}">Updated {{ doc.updated }}</time>
+                <span>{{ doc.minutes }} min read</span>
+            </p>
+            <nav class="doc-rail" id="docRail" aria-labelledby="docTocH" hidden>
+                <p class="doc-toc-h" id="docTocH">In this document</p>
+                <ol class="doc-toc" id="docToc"></ol>
+                <p class="doc-left" id="docLeft" aria-live="off"></p>
+            </nav>
         </div>
 
-        <div id="editorContainer" class="doc-editor-container" style="display: none;">
-            <textarea id="markdownEditor" class="doc-editor" spellcheck="false"></textarea>
-            <div id="previewPane" class="markdown-content doc-preview-pane"></div>
+        <div class="doc-main">
+            <details class="doc-toc-m" id="docTocM" hidden>
+                <summary>Contents <span class="kw-n" id="docTocN"></span></summary>
+                <ol class="doc-toc" id="docTocMobile"></ol>
+            </details>
+            <div class="doc-md" id="docBody"><p class="doc-loading">Loading…</p></div>
+
+            <footer class="doc-foot">
+                <span class="doc-foot-meta">First written {{ doc.created }} · updated {{ doc.updated }}</span>
+                {% if is_admin and documents_editable %}
+                <a href="{{ url_for('private_area.document_edit', filename=filename) }}" class="kw-btn kw-btn-sm kw-btn-primary">Edit document</a>
+                {% endif %}
+            </footer>
+
+            {% if prev_doc or next_doc %}
+            <nav class="doc-pn" aria-label="More in {{ doc.category_label }}">
+                <h2>Keep reading in {{ doc.category_label }}</h2>
+                <div class="doc-pn-items">
+                    {% if prev_doc %}
+                    <a class="doc-pn-item" href="{{ url_for('private_area.document_view', filename=prev_doc.filename) }}" rel="prev">
+                        <span class="doc-pn-k">Newer</span><span class="doc-pn-t">{{ prev_doc.title }}</span>
+                    </a>
+                    {% endif %}
+                    {% if next_doc %}
+                    <a class="doc-pn-item doc-pn-next" href="{{ url_for('private_area.document_view', filename=next_doc.filename) }}" rel="next">
+                        <span class="doc-pn-k">Older</span><span class="doc-pn-t">{{ next_doc.title }}</span>
+                    </a>
+                    {% endif %}
+                </div>
+            </nav>
+            {% endif %}
         </div>
-        {% endif %}
-    </section>
-</div>
-
-<div id="documentMeta"
-     data-filename="{{ filename }}"
-     data-is-admin="{{ 'true' if is_admin else 'false' }}"
-     data-editable="{{ 'true' if documents_editable else 'false' }}"
-     style="display:none;"></div>
-{% endblock %}
-
-{% block after_main %}
-    <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-    </button>
+    </div>
+</article>
+<dialog class="doc-lightbox" id="docLightbox" aria-label="Image"><img alt=""></dialog>
 {% endblock %}
 
 {% block scripts %}
-    <script>
-        window.addEventListener('scroll', function() {
-            var btn = document.getElementById("scrollToTopBtn");
-            if (window.scrollY > 300) {
-                btn.style.opacity = "1";
-                btn.style.pointerEvents = "auto";
-            } else {
-                btn.style.opacity = "0";
-                btn.style.pointerEvents = "none";
-            }
-        });
-    </script>
     <script src="{{ url_for('static', filename='js/document_view.js') }}"></script>
 {% endblock %}
