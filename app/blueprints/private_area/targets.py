@@ -324,6 +324,44 @@ def api_search_target():
         logger.error('Search error: %s', e)
         return jsonify({'results': []})
 
+@private_area_bp.route('/api/auto_exposure/snr', methods=['POST'])
+@login_required
+def api_auto_exposure_snr():
+    """S/N of frames typed by hand in the target form, at the plan's time and camera: {ra, dec, telescope, camera,
+    when (ISO, the plan's), no_moon, rows: [{filter, mag, exp, count}]} -> {success, snr: {filter: S/N}}."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or not isinstance(data.get('rows'), list) or not 1 <= len(data['rows']) <= 5:
+        return jsonify({'error': 'Invalid JSON body'}), 400
+    _err = _coord_error(data)
+    if _err:
+        return jsonify({'error': _err}), 400
+    from datetime import datetime
+    from app.services.planning import auto_exposure as ae
+    tel = (data.get('telescope') or 'SLT').strip().upper()
+    tel = tel if tel in ae.CAMERAS else 'SLT'
+    camera = data.get('camera') if data.get('camera') in ae.CAMERAS[tel] else None
+    try:
+        when = datetime.fromisoformat(str(data.get('when')))
+    except ValueError:
+        return jsonify({'error': 'when must be an ISO time'}), 400
+    bands = {sf: cf for sf, _, cf in ae.BANDS}
+    ra, dec = _parse_ra_deg(data.get('ra')), _parse_dec_deg(data.get('dec'))
+    out = {}
+    for r in data['rows']:
+        try:
+            sf, mag, exp, count = str(r.get('filter')), float(r.get('mag')), float(r.get('exp')), int(r.get('count'))
+        except (TypeError, ValueError, AttributeError):
+            return jsonify({'error': 'Each row needs filter, mag, exp and count'}), 400
+        if sf not in bands or not (5 <= mag <= 30 and 0 < exp <= 3600 and 1 <= count <= 200):
+            return jsonify({'error': 'Filter u g r i z, mag 5 to 30, 1 to 3600 s, 1 to 200 frames'}), 400
+        try:
+            out[sf] = ae.snr_for(bands[sf], ra, dec, mag, exp, count, when, telescope=tel, camera=camera, moon=not data.get('no_moon'))
+        except Exception:
+            logger.exception('S/N for %s', sf)
+            out[sf] = None
+    return jsonify({'success': True, 'snr': out})
+
+
 @private_area_bp.route('/api/auto_exposure', methods=['POST'])
 @login_required
 def api_auto_exposure():

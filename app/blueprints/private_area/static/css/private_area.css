@@ -1268,128 +1268,6 @@ body::before {
 .pa-auto-pick.is-long .pa-auto-t { color: #ffb74d; }
 .pa-auto-pick.is-lot { border-style: dashed; }
 
-/* New / edit target: one screen, no scrolling. Target | exposures | the target tonight */
-.pa-modal-box.pa-target-box { width: 97vw; max-width: 1680px; height: 93vh; max-height: none; overflow: hidden; padding: 14px 20px 16px;
-    display: flex; flex-direction: column; }
-.pa-tw-head { display: flex; align-items: center; justify-content: space-between; flex: none; margin-bottom: 10px; }
-.pa-tw-head h3 { margin: 0; font-size: 1.15rem; }
-.pa-tw-close { background: none; border: 0; color: var(--kw-text-muted, #999); font-size: 1.6rem; line-height: 1; cursor: pointer; padding: 0 4px; }
-.pa-tw-close:hover { color: #fff; }
-.pa-target-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; }
-.pa-tw-form { display: grid; grid-template-columns: minmax(230px, 0.62fr) minmax(0, 1fr); gap: 20px; min-height: 0; }
-.pa-tw-col { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
-.pa-tw-target { border-right: 1px solid rgba(255,255,255,0.06); padding-right: 20px; }
-.pa-tw-target .pa-input { padding: 0.5rem 0.7rem; }
-.pa-tw-target .pa-modal-footer { margin-top: auto; }
-.pa-tw-name { position: relative; }
-.pa-tw-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.pa-tw-label { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 600; color: var(--kw-text-secondary, #bbb); text-transform: none; }
-.pa-tw-info { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid currentColor;
-    font-size: 0.6875rem; font-style: italic; font-weight: 600; color: var(--kw-text-muted, #888); cursor: help; flex: none; }
-.pa-tw-info:hover, .pa-tw-info:focus-visible { color: #fff; }
-.pa-target-box .pa-lot-program .pa-field { width: 100%; }
-.pa-tw-exp { overflow: hidden; }
-.pa-target-box .pa-auto-exp-container { margin: 0; padding: 0 0 10px; gap: 6px; }
-.pa-target-box .pa-auto-exp-hint { min-height: 0; }
-.pa-target-box .pa-obs-config { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
-.pa-target-box .pa-total-exposure { margin: 0 0 0 auto; font-size: 0.75rem; }
-.pa-target-box .pa-filter-rows { gap: 4px; margin: 0; }
-.pa-target-box .pa-filter-row { margin: 0; gap: 8px; }
-.pa-target-box .pa-filter-row:not(:first-child) .pa-field-label { display: none; }
-.pa-target-box .pa-filter-row select, .pa-target-box .pa-filter-row input { padding: 4px 6px; }
-.pa-target-box .pa-filter-actions { margin: 0; gap: 1rem; }
-/* the target tonight */
-.pa-target-preview { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 12px; min-width: 0; min-height: 0;
-    border-left: 1px solid rgba(255,255,255,0.06); padding-left: 20px; }
-.pa-target-preview > .pa-tp-empty { align-self: start; }
-.pa-tp-sec h4 { margin: 0 0 6px; font-size: 0.75rem; font-weight: 600; color: var(--kw-text-secondary, #bbb); }
-.pa-tp-astro { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.75rem; color: var(--kw-text-muted, #999); margin-bottom: 4px; }
-.pa-tp-astro b { color: #fff; font-weight: 600; font-family: var(--kw-font-mono, monospace); }
-.pa-tp-row { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-.pa-tp-vis svg { width: 100%; height: auto; max-height: 24vh; }
-.pa-tp-sky .dtw-sky { margin: 0; width: 100%; }
-.pa-target-preview .pa-tp-sky .dtw-sky :is(img, .dta-thumb) { width: 100%; max-width: min(100%, 24vh); height: auto; aspect-ratio: 1; display: block; }
-.pa-tp-lcsec { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
-.pa-target-preview > * { min-width: 0; }
-.pa-tp-lc { flex: 1; min-height: 0; position: relative; }
-.pa-tp-lc #tpLcPlot { position: absolute; inset: 0; }
-.pa-tp-lc #telescopeToggles, .pa-tp-lc #photLegend { display: none !important; }
-.pa-tp-empty { margin: 0; font-size: 0.8125rem; color: var(--kw-text-muted, #888); }
-/* light curve filter: one chip per band, sources in a menu */
-.pa-lcf { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; font-size: 0.75rem; }
-.pa-lcf-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; cursor: pointer;
-    border: 1px solid rgba(255,255,255,0.14); background: transparent; color: var(--kw-text-muted, #888); font: inherit; }
-.pa-lcf-chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, #888); opacity: 0.35; }
-.pa-lcf-chip[aria-pressed="true"] { color: #fff; border-color: color-mix(in srgb, var(--c, #888) 70%, transparent); background: color-mix(in srgb, var(--c, #888) 16%, transparent); }
-.pa-lcf-chip[aria-pressed="true"] i { opacity: 1; }
-.pa-lcf-sep { width: 1px; align-self: stretch; background: rgba(255,255,255,0.1); margin: 0 2px; }
-.pa-lcf-src { position: relative; }
-.pa-lcf-src > summary { list-style: none; }
-.pa-lcf-src > summary::-webkit-details-marker { display: none; }
-.pa-lcf-menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; background: var(--pa-modal-bg, #1c1c1e); border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: grid; grid-auto-flow: column;
-    grid-template-rows: repeat(var(--rows, 6), auto); gap: 4px 16px; white-space: nowrap; }
-.pa-lcf-menu label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--kw-text-secondary, #ccc); }
-.pa-lcf-menu .pa-lcf-all { grid-column: 1 / -1; grid-row: auto; display: flex; gap: 10px; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-/* layout B: two tiers. Top: target | tonight | survey; bottom: exposure plan (two columns wide) | light curve */
-.pa-target-grid { grid-template-columns: minmax(250px, 0.72fr) minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 0.68fr) minmax(0, 1.32fr); grid-template-areas: "tgt vis sky" "exp exp lc"; gap: 14px 20px; }
-.pa-tw-form, .pa-target-preview, .pa-tp-row { display: contents; }
-.pa-tw-target { grid-area: tgt; overflow: hidden; }
-.pa-tw-exp { grid-area: exp; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; }
-.pa-tp-row > .pa-tp-sec:first-child, .pa-target-preview > .pa-tp-empty { grid-area: vis; }
-.pa-tp-row > .pa-tp-sec:last-child { grid-area: sky; }
-.pa-tp-lcsec { grid-area: lc; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px; }
-.pa-tp-row > .pa-tp-sec { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
-.pa-tp-vis { flex: 1; min-height: 0; }
-.pa-tp-vis svg { width: 100%; height: 100%; max-height: none; }
-.pa-target-preview .pa-tp-sky .dtw-sky { width: min(100%, 26vh); }
-.pa-target-preview .pa-tp-sky .dtw-sky :is(img, .dta-thumb) { max-width: 100%; }
-.pa-target-box .pa-auto-plan table { width: 100%; }
-/* the bottom tier is wide: plan table on the left, the plan pick and the exposures on the right */
-/* the bottom tier: Auto Exposure (its plan, then the plan pick under the table) on the left; the exposures on the
-   right, always in the same place, so pressing Auto Exposure adds below what is there and moves nothing */
-.pa-tw-exp { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(240px, 1fr); gap: 0 20px; align-content: start; align-items: start;
-    overflow-y: auto; overscroll-behavior: contain; }
-.pa-tw-exp > .pa-auto-exp-container { grid-column: 1; grid-row: 1; min-width: 0; }
-.pa-tw-exp > .pa-obs-config { grid-column: 2; grid-row: 1; }
-.pa-tw-exp > .pa-auto-exp-container[style*="none"] + .pa-obs-config { grid-column: 1 / -1; }
-.pa-tw-exp .pa-auto-choose { margin: 4px 0 0; }
-.pa-tw-exp { grid-template-columns: minmax(0, 1.9fr) minmax(220px, 1fr); }
-/* compact, and the one-line hint keeps its place empty or not, so nothing below it jumps */
-.pa-target-box .pa-auto-exp-row { flex-wrap: wrap; gap: 6px 10px; }
-.pa-target-box .pa-btn-auto-exp { white-space: nowrap; }
-.pa-target-box .pa-auto-exp-hint { display: block; min-height: 16px; line-height: 16px; font-size: 0.75rem; }
-.pa-target-box .pa-auto-opts { gap: 4px; }
-.pa-target-box .pa-auto-opt { padding: 2px 8px; font-size: 0.75rem; }
-.pa-target-box :is(.pa-auto-rig, .pa-auto-moon, .pa-auto-plan-head) { font-size: 0.75rem; line-height: 1.35; }
-.pa-target-box .pa-auto-plan { gap: 4px; }
-.pa-tw-exp { scrollbar-gutter: stable; }     /* a scrollbar, if ever needed, never narrows the columns */
-.pa-target-box .pa-auto-tbl :is(td, th) { padding-top: 1px; padding-bottom: 1px; height: 24px; }
-.pa-target-box .pa-auto-tbl td, .pa-target-box .pa-auto-tbl th { padding-top: 1px; padding-bottom: 1px; }
-.pa-target-box .pa-auto-tbl input.pa-auto-mag, .pa-target-box .pa-auto-tbl input { padding: 1px 6px; height: 24px; min-height: 0; box-sizing: border-box; }
-.pa-auto-snr input[type="checkbox"] { width: auto; }
-.pa-target-box .pa-filter-subtotal { white-space: nowrap; width: auto; font-size: 0.8125rem; }
-.pa-target-box .pa-filter-row select, .pa-target-box .pa-filter-row input { height: 24px; min-height: 0; box-sizing: border-box; }
-.pa-target-box .pa-auto-exp-row { position: relative; }
-.pa-target-box .pa-auto-snr { white-space: nowrap; }
-@media (max-width: 1100px), (max-height: 640px) {
-    /* one column that scrolls inside the window (never the page behind it) */
-    .pa-modal-box.pa-target-box { height: auto; max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
-    .pa-target-grid, .pa-tw-form { grid-template-columns: minmax(0, 1fr); }
-    .pa-tw-target { border: 0; padding: 0; overflow: visible; }
-    .pa-target-grid { grid-template-areas: "tgt" "vis" "sky" "exp" "lc"; grid-template-rows: none; flex: none; }
-    .pa-tp-lcsec { height: 380px; }
-    .pa-tw-exp { grid-template-columns: minmax(0, 1fr); overflow: visible; }
-    .pa-tw-exp > .pa-obs-config { grid-column: 1; grid-row: auto; margin-top: 12px; }
-}
-@media (max-width: 640px) {
-    .pa-modal-box.pa-target-box { width: 100%; max-height: 100dvh; border-radius: 0;
-        padding: max(12px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
-    .pa-tw-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-    .pa-target-box .pa-auto-tbl :is(.pa-auto-from, thead th:nth-child(3)) { display: none; }      /* where a magnitude came from: on wider screens */
-}
-
 /* Daily Trigger windows are native modal <dialog>s (dt_dialogs.js): the dialog is the dimmed full-screen layer */
 dialog.pa-modal-overlay { max-width: none; max-height: none; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; color: inherit;
     background: rgba(0, 0, 0, 0.6); overflow: hidden; overscroll-behavior: contain; }
@@ -2395,50 +2273,6 @@ html { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); scr
 }
 .pa-lcf-menu { max-width: calc(100vw - 16px); }
 @media (max-width: 768px) { #scrollToTopBtn { display: none !important; } }   /* phones: tap the status bar; the button covered content */
-/* the target window's Cancel / Save sit in its header, always in sight (on a phone the header stays on top while the window scrolls) */
-.pa-tw-actions { display: flex; align-items: center; gap: 8px; }
-.pa-tw-actions .pa-btn-save { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; }
-.pa-tw-actions .pa-btn-cancel { padding: 6px 10px; }
-.pa-tw-target .pa-input { padding: 0.375rem 0.625rem; }
-.pa-tw-target .pa-field-label { font-size: 0.6875rem; }
-@media (max-width: 1100px), (max-height: 640px) {
-    .pa-modal-box.pa-target-box { padding-top: 0; }
-    .pa-tw-head { position: sticky; top: 0; z-index: 3; background: rgb(26, 26, 30);
-        margin: 0 -16px 10px; padding: max(10px, env(safe-area-inset-top)) 16px 10px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-}
-/* the exposure rows' column names sit above the first row, not on its inputs */
-.pa-target-box .pa-filter-row .pa-field-label { position: static; display: block; transform: none; padding: 0 0 2px; background: none; font-size: 0.6875rem; line-height: 1.2; }
-/* laptops (about 1280 x 800): the per-row subtotal goes (the total is above the rows) so the numbers keep their width,
-   and the top tier takes only the height it needs */
-@media (max-width: 1400px) and (min-width: 1101px) {
-    .pa-target-box .pa-filter-subtotal { display: none; }
-    .pa-target-box .pa-filter-row .pa-field { min-width: 52px; }
-    .pa-target-grid { grid-template-columns: minmax(230px, 0.68fr) minmax(0, 1fr) minmax(0, 0.62fr); }
-}
-@media (max-height: 880px) and (min-width: 1101px) {
-    .pa-target-grid { grid-template-rows: auto minmax(0, 1fr); }
-    .pa-tp-vis svg { max-height: 150px; }
-    .pa-target-preview .pa-tp-sky .dtw-sky { width: min(100%, 170px); }
-    /* a denser Auto Exposure column */
-    .pa-target-box .pa-auto-opt { padding: 1px 6px; font-size: 0.6875rem; }
-    .pa-target-box .pa-auto-opts { gap: 3px; }
-    .pa-target-box .pa-auto-tbl :is(td, th) { height: 20px; }
-    .pa-target-box .pa-auto-tbl input.pa-auto-mag, .pa-target-box .pa-auto-tbl input { height: 20px; }
-    .pa-target-box .pa-auto-exp-row { gap: 4px 8px; }
-    .pa-target-box .pa-auto-exp-row .pa-btn-auto-exp { padding-top: 6px; padding-bottom: 6px; }
-    .pa-target-box .pa-filter-rows { gap: 2px; }
-    .pa-target-box .pa-auto-choose { padding: 4px 8px; gap: 3px; }
-    .pa-target-box .pa-filter-actions { min-height: 0; }
-    .pa-target-box .pa-filter-actions .pa-btn-link { padding-top: 2px; padding-bottom: 2px; }
-    .pa-target-box .pa-auto-pick { padding: 3px 8px; }
-    .pa-target-grid { row-gap: 8px; }
-    .pa-tw-exp, .pa-tp-lcsec { padding-top: 6px; }
-    .pa-target-box .pa-filter-row select, .pa-target-box .pa-filter-row input { height: 22px; }
-    .pa-modal-box.pa-target-box { padding-top: 10px; }
-}
-.pa-target-box .pa-filter-row .pa-field { flex: 1 1 0; min-width: 0; max-width: none; }
-.pa-target-box .pa-filter-row .pa-field :is(input, select) { width: 100%; }
-.pa-target-box .pa-filter-subtotal { flex: none; width: 64px; text-align: right; }
 /* plain checkboxes drawn the same on every browser (iOS Safari's dark native box reads as a black square) */
 .dt-page input[type="checkbox"]:not(.pa-checklist-checkbox, .pa-action-switch input),
 .pa-modal-box input[type="checkbox"] {
@@ -2452,4 +2286,233 @@ html { scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); scr
 .dt-page input[type="checkbox"]:focus-visible, .pa-modal-box input[type="checkbox"]:focus-visible { outline: 2px solid var(--kw-accent, #f0a05a); outline-offset: 2px; }
 @media (pointer: coarse) {
     .dt-page input[type="checkbox"]:not(.pa-checklist-checkbox, .pa-action-switch input), .pa-modal-box input[type="checkbox"] { width: 22px; height: 22px; background-size: 14px 14px; }
+}
+
+/* ================= New / edit target window =================
+   One screen on a laptop: the form on the left (target, notes, exposures), the sky on the right (tonight's altitude across
+   the top, the survey image and the light curve under it). Quiet chrome: one field height (36 px) with the label above,
+   hairlines between sections, one filled button (Save). Narrow or short windows: one column that scrolls in the window. */
+.pa-target-box { --tw-s1: rgb(23, 23, 27); --tw-s2: rgba(255, 255, 255, 0.05); --tw-hl: rgba(255, 255, 255, 0.08); --tw-hl2: rgba(255, 255, 255, 0.14);
+    --tw-t1: #f2f2f4; --tw-t2: rgba(242, 242, 244, 0.72); --tw-t3: rgba(242, 242, 244, 0.5); --tw-warn: #e6b45c; }
+.pa-modal-box.pa-target-box { width: min(97vw, 1600px); max-width: none; height: min(93vh, 960px); max-height: none; padding: 0; overflow: hidden;
+    display: flex; flex-direction: column; background: var(--tw-s1); border: 1px solid var(--tw-hl); border-radius: 16px; color: var(--tw-t1); }
+.pa-tw-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 24px; border-bottom: 1px solid var(--tw-hl); }
+.pa-target-box .pa-tw-head h3 { margin: 0; font-size: 1rem; font-weight: 500; }
+.pa-tw-actions { display: flex; align-items: center; gap: 8px; }
+.pa-target-box .pa-tw-actions :is(.pa-btn-save, .pa-btn-cancel) { height: 36px; padding: 0 16px; border-radius: 8px; display: inline-flex; align-items: center; gap: 8px;
+    font-size: 0.875rem; font-weight: 500; transition: background-color 150ms, color 150ms; }
+.pa-target-box .pa-btn-save { background: var(--kw-accent, #f39f5a); color: var(--kw-accent-contrast, #1a1206); }
+.pa-target-box .pa-btn-save:hover { background: var(--kw-accent-hover, var(--kw-accent)); }
+.pa-target-box .pa-btn-cancel { background: transparent; color: var(--tw-t2); }
+.pa-target-box .pa-btn-cancel:hover { color: var(--tw-t1); }
+.pa-target-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 13fr); }
+
+/* the form */
+.pa-tw-form { min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable;
+    padding: 16px 24px 20px; display: flex; flex-direction: column; gap: 20px; }
+.pa-tw-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pa-tw-label { display: flex; align-items: center; gap: 8px; font-size: 0.8125rem; font-weight: 500; color: var(--tw-t2); }
+.pa-tw-info { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid currentColor; flex: none;
+    font: 500 0.6875rem/1 var(--kw-font-mono, monospace); color: var(--tw-t3); cursor: help; }
+.pa-tw-info:hover, .pa-tw-info:focus-visible { color: var(--tw-t1); }
+.pa-tw-name { position: relative; }
+.pa-tw-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+/* target: the name across, then RA · Dec · Priority · Repeat in one row */
+.pa-tw-target { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 0.6fr); gap: 10px 12px; }
+.pa-tw-target > * { grid-column: 1 / -1; }
+.pa-tw-target > .pa-tw-pair { display: contents; }
+.pa-tw-target > .pa-tw-pair > * { grid-column: auto; }
+.pa-target-box .pa-lot-program { margin: 0; }
+.pa-target-box .pa-lot-program .pa-field { width: 100%; }
+/* fields: label above, one 36 px control */
+.pa-target-box .pa-field { position: static; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 0; border: 0; background: none; }
+.pa-target-box .pa-field-label { position: static; padding: 0; background: none; font-size: 0.75rem; line-height: 16px; color: var(--tw-t3); }
+.pa-target-box :is(.pa-tw-target, .pa-tw-notes) :is(input:not([type="checkbox"]), select, textarea),
+.pa-target-box .pa-auto-exp-row :is(input:not([type="checkbox"]), select) {
+    box-sizing: border-box; width: 100%; height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--tw-hl); background: var(--tw-s2);
+    color: var(--tw-t1); font: 0.875rem var(--kw-font-sans); outline: none; transition: border-color 150ms; }
+.pa-target-box #obs-ra, .pa-target-box #obs-dec, .pa-target-box #obs-count { font-family: var(--kw-font-mono, monospace); font-variant-numeric: tabular-nums; }
+.pa-target-box textarea { height: auto !important; min-height: 64px; padding: 8px 12px !important; line-height: 20px; resize: vertical; }
+.pa-target-box :is(input, select, textarea):focus-visible { border-color: var(--kw-accent-border, rgba(243, 159, 90, 0.5)); }
+.pa-target-box :is(input, textarea)::placeholder { color: var(--tw-t3); opacity: 1; }
+.pa-target-box select { appearance: none; padding-right: 28px !important;
+    background: var(--tw-s2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center !important; }
+.pa-target-box .pa-name-hint { font-size: 0.75rem; min-height: 0; margin-top: 4px; }
+
+/* exposures */
+.pa-tw-exp .pa-total-exposure { display: inline !important; margin-left: auto; font: 0.75rem var(--kw-font-mono, monospace); color: var(--tw-t3); }
+.pa-tw-exp .pa-total-exposure b { color: var(--tw-t1); font-weight: 500; }
+.pa-target-box .pa-auto-exp-container { margin: 0; padding: 0; border: 0; gap: 4px; }
+.pa-target-box .pa-auto-exp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.pa-target-box .pa-btn-auto-exp { height: 36px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--tw-hl2); background: var(--tw-s2); color: var(--tw-t1);
+    font-size: 0.875rem; font-weight: 500; white-space: nowrap; transition: background-color 150ms; }
+.pa-target-box .pa-btn-auto-exp:hover { background: rgba(255, 255, 255, 0.09); }
+.pa-target-box .pa-btn-auto-exp svg { color: var(--tw-t2); }
+.pa-target-box .pa-auto-snr { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8125rem; color: var(--tw-t2); white-space: nowrap; }
+.pa-target-box .pa-auto-exp-row .pa-auto-snr input:not([type="checkbox"]) { width: 72px; padding: 0 10px; font-family: var(--kw-font-mono, monospace); }
+.pa-target-box .pa-auto-cam { width: auto !important; max-width: 170px; }
+.pa-target-box .pa-auto-exp-hint { display: block; min-height: 16px; margin: 0; font-size: 0.75rem; line-height: 16px; font-style: normal; color: var(--tw-warn); }
+/* the table: one row per filter */
+.pa-xp { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.pa-xp th, .pa-xp td { height: 36px; padding: 0 8px; border-bottom: 1px solid var(--tw-hl); font-size: 0.8125rem; font-weight: 400; color: var(--tw-t3); text-align: left; }
+.pa-xp thead th { height: auto; padding-bottom: 6px; font-size: 0.75rem; }
+.pa-xp .is-num { text-align: right; font-family: var(--kw-font-mono, monospace); }
+.pa-xp .pa-xp-c { width: 18px; padding-left: 0; }
+.pa-xp .pa-xp-f { font-family: var(--kw-font-mono, monospace); }
+.pa-xp tr.is-on td, .pa-xp tr.is-on th { color: var(--tw-t1); }
+.pa-xp tbody tr.is-on { background: rgba(255, 255, 255, 0.03); }
+.pa-xp .pa-xp-fr { white-space: nowrap; font: 0.75rem var(--kw-font-mono, monospace); }
+.pa-xp .pa-xp-fr > span { margin: 0 6px; }
+.pa-xp :is(.pa-xp-n, .pa-auto-mag, .pa-xp-name) { box-sizing: border-box; height: 28px; width: 64px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--tw-hl);
+    background: transparent; color: inherit; font: 0.8125rem var(--kw-font-mono, monospace); text-align: right; -moz-appearance: textfield; }
+.pa-xp .pa-xp-n + span + .pa-xp-n, .pa-xp .pa-xp-fr > .pa-xp-n:last-child { width: 48px; }
+.pa-xp .pa-xp-name { width: 72px; text-align: left; }
+.pa-xp tr.is-on :is(.pa-xp-n, .pa-xp-name) { background: var(--tw-s2); }
+.pa-xp :is(.pa-xp-n, .pa-auto-mag)::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.pa-xp .pa-auto-mag::placeholder { color: inherit; opacity: 0.85; }
+.pa-xp :is(.pa-xp-n, .pa-auto-mag, .pa-xp-name):focus-visible { outline: none; border-color: var(--kw-accent-border, rgba(243, 159, 90, 0.5)); }
+/* under the table: rig, where the magnitudes came from, the Moon; then the plans */
+.pa-target-box .pa-auto-plan { display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; line-height: 18px; color: var(--tw-t3); }
+.pa-target-box :is(.pa-auto-rig, .pa-auto-src, .pa-auto-moon) { display: flex; flex-wrap: wrap; gap: 0 12px; font-size: 0.75rem; line-height: 18px; color: var(--tw-t3); }
+.pa-target-box .pa-auto-rig b { color: var(--tw-t2); font-weight: 500; }
+.pa-target-box .pa-auto-src b { margin-right: 4px; color: var(--tw-t2); font: 500 0.75rem var(--kw-font-mono, monospace); }
+.pa-target-box .pa-auto-plan-head { color: var(--tw-t2); }
+.pa-target-box .pa-auto-warn { margin: 0; color: var(--tw-warn); }
+.pa-xp-foot { display: flex; align-items: flex-start; gap: 8px; }
+.pa-xp-foot .pa-auto-choose-slot { flex: 1; min-width: 0; }
+.pa-target-box .pa-auto-choose { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0; border: 0; background: none; }
+.pa-target-box .pa-auto-choose-l { flex-basis: auto; margin-right: 2px; font-size: 0.75rem; color: var(--tw-t3); }
+.pa-target-box .pa-auto-choose.is-needed .pa-auto-choose-l { color: var(--tw-warn); font-weight: 500; }
+.pa-target-box .pa-auto-pick { height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--tw-hl); border-style: solid; background: transparent;
+    color: var(--tw-t2); font: 0.75rem var(--kw-font-sans); cursor: pointer; transition: border-color 150ms, color 150ms; }
+.pa-target-box .pa-auto-pick:hover { border-color: var(--tw-hl2); color: var(--tw-t1); }
+.pa-target-box .pa-auto-pick.is-on { border-color: var(--kw-accent-border, rgba(243, 159, 90, 0.5)); color: var(--tw-t1); }
+.pa-target-box .pa-auto-pick .pa-auto-t { margin-left: 4px; font: 500 0.75rem var(--kw-font-mono, monospace); color: var(--tw-t1); }
+.pa-target-box .pa-auto-pick.is-long .pa-auto-t { color: var(--tw-warn); }
+.pa-target-box .pa-xp-add { height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--tw-hl); color: var(--tw-t2); font-size: 0.75rem; white-space: nowrap; }
+.pa-target-box .pa-xp-add:hover { color: var(--tw-t1); border-color: var(--tw-hl2); }
+
+/* the sky: tonight across the top, the survey image and the light curve under it */
+.pa-target-preview { min-height: 0; min-width: 0; overflow: hidden; border-left: 1px solid var(--tw-hl); padding: 16px 24px 20px;
+    display: grid; grid-template-columns: minmax(0, 0.42fr) minmax(0, 0.58fr); grid-template-rows: auto minmax(0, 1fr); gap: 20px 24px; align-content: start; }
+.pa-target-preview > * { min-width: 0; }
+.pa-target-preview > .pa-tp-empty { grid-column: 1 / -1; align-self: start; }
+.pa-tp-row { display: contents; }
+.pa-tp-row > .pa-tp-sec:first-child { grid-column: 1 / -1; }
+.pa-tp-row > .pa-tp-sec:last-child { grid-column: 1; grid-row: 2; min-height: 0; }
+.pa-tp-lcsec { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.pa-tp-sec h4 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 0.8125rem; font-weight: 500; color: var(--tw-t2); }
+.pa-tp-sec h4 a { font-size: 0.75rem; font-weight: 400; color: var(--kw-accent, #f39f5a); text-decoration: none; }
+.pa-tp-sec h4 a:hover { text-decoration: underline; }
+.pa-tp-astro { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 8px; font-size: 0.75rem; color: var(--tw-t3); }
+.pa-tp-astro b { color: var(--tw-t1); font: 500 0.75rem var(--kw-font-mono, monospace); }
+.pa-tp-vis { height: clamp(150px, 24vh, 230px); }
+.pa-tp-vis .pa-vis-svg { display: block; width: 100%; height: calc(100% - 22px); }
+.pa-tp-vis .pa-vis-svg text { font-family: var(--kw-font-mono, monospace); }
+.pa-tp-vis .pa-vis-cap { display: block; margin-top: 4px; font-size: 0.75rem; line-height: 18px; color: var(--tw-t3); }
+.pa-tp-vis .pa-vis-cap b { color: var(--tw-t1); font: 500 0.75rem var(--kw-font-mono, monospace); }
+.pa-tp-sky .dtw-sky { margin: 0; width: 100%; padding: 0; border: 0; }
+.pa-target-preview .pa-tp-sky .dtw-sky :is(img, .dta-thumb) { display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 1; border-radius: 8px; }
+.pa-tp-sky figcaption { font-size: 0.75rem; color: var(--tw-t3); }
+.pa-tp-lc { flex: 1; min-height: 0; position: relative; }
+.pa-tp-lc #tpLcPlot { position: absolute; inset: 0; }
+.pa-tp-lc #telescopeToggles, .pa-tp-lc #photLegend { display: none !important; }
+.pa-tp-lc .modebar-container { display: none; }              /* a preview: zoom on the Transient page */
+.pa-tp-empty { margin: 0; font-size: 0.8125rem; color: var(--tw-t3); }
+/* light curve filter: one chip per band, limits, the sources in a menu */
+.pa-lcf { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; font-size: 0.75rem; }
+.pa-lcf-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--tw-hl); background: transparent; color: var(--tw-t3); font: 0.75rem var(--kw-font-mono, monospace); }
+.pa-lcf-chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, #888); opacity: 0.35; }
+.pa-lcf-chip[aria-pressed="true"] { color: var(--tw-t1); border-color: var(--tw-hl2); background: var(--tw-s2); }
+.pa-lcf-chip[aria-pressed="true"] i { opacity: 1; }
+.pa-lcf-sep { width: 1px; align-self: stretch; background: var(--tw-hl); margin: 0 2px; }
+.pa-lcf-src { position: relative; }
+.pa-lcf-src > summary { list-style: none; }
+.pa-lcf-src > summary::-webkit-details-marker { display: none; }
+.pa-lcf-menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; background: rgb(30, 30, 35); border: 1px solid var(--tw-hl2);
+    border-radius: 8px; padding: 8px 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); display: grid; grid-auto-flow: column;
+    grid-template-rows: repeat(var(--rows, 6), auto); gap: 4px 16px; white-space: nowrap; max-width: calc(100vw - 16px); }
+.pa-lcf-menu label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--tw-t2); }
+.pa-lcf-menu .pa-lcf-all { grid-column: 1 / -1; grid-row: auto; display: flex; gap: 10px; padding-bottom: 4px; border-bottom: 1px solid var(--tw-hl); }
+
+/* narrow or short windows: one column that scrolls inside the window (never the page behind it); Save stays in sight */
+@media (max-width: 1100px), (max-height: 700px) {
+    .pa-modal-box.pa-target-box { height: auto; max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+    .pa-tw-head { position: sticky; top: 0; z-index: 3; background: var(--tw-s1); }
+    .pa-target-grid { grid-template-columns: minmax(0, 1fr); flex: none; }
+    .pa-tw-form { overflow: visible; }
+    .pa-target-preview { border-left: 0; border-top: 1px solid var(--tw-hl); overflow: visible; }
+    .pa-tp-lcsec { height: 360px; }
+}
+@media (max-width: 640px) {
+    .pa-modal-box.pa-target-box { width: 100%; max-height: 100dvh; border-radius: 0; border: 0; }
+    .pa-tw-head { padding: max(10px, env(safe-area-inset-top)) 16px 10px; }
+    .pa-tw-form, .pa-target-preview { padding-left: 16px; padding-right: 16px; }
+    .pa-tw-target { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .pa-tw-notes .pa-tw-pair { grid-template-columns: minmax(0, 1fr); }
+    .pa-target-preview { grid-template-columns: minmax(0, 1fr); }
+    .pa-tp-row > .pa-tp-sec:last-child, .pa-tp-lcsec { grid-column: 1; grid-row: auto; }
+    .pa-tp-sky .dtw-sky { max-width: 280px; }
+    .pa-xp :is(th, td):nth-child(5) { display: none; }      /* S/N: on wider screens */
+    .pa-xp :is(.pa-xp-n, .pa-auto-mag) { width: 56px; }
+    .pa-xp th, .pa-xp td { padding: 0 4px; }
+    .pa-xp-foot { flex-direction: column; }
+}
+.pa-tp-vis .pa-vis-svg text { font-size: 11px; }
+/* the name check sits on the Target label line, so it takes no row of its own */
+.pa-tw-target { position: relative; }
+.pa-target-box .pa-tw-target .pa-name-hint { position: absolute; top: 0; right: 0; margin: 0; max-width: 70%; line-height: 20px; font-size: 0.75rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pa-xp th, .pa-xp td { height: 32px; }
+.pa-tw-form { gap: 16px; }
+/* laptops (about 1280 x 800): the form gets half the width and a denser rhythm, so it still fits without scrolling */
+@media (max-width: 1440px) and (min-width: 1101px) {
+    .pa-target-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (max-height: 880px) and (min-width: 1101px) and (min-height: 701px) {
+    .pa-tw-head { padding-top: 8px; padding-bottom: 8px; }
+    .pa-tw-form { gap: 12px; padding-top: 12px; padding-bottom: 12px; }
+    .pa-target-preview { padding-top: 12px; padding-bottom: 12px; row-gap: 12px; }
+    .pa-tw-col, .pa-tw-target { row-gap: 8px; }
+    .pa-target-box :is(.pa-tw-target, .pa-tw-notes) :is(input:not([type="checkbox"]), select),
+    .pa-target-box .pa-auto-exp-row :is(input:not([type="checkbox"]), select), .pa-target-box .pa-btn-auto-exp { height: 32px; }
+    .pa-target-box textarea { min-height: 56px; padding-top: 6px !important; padding-bottom: 6px !important; }
+    .pa-xp th, .pa-xp td { height: 28px; }
+    .pa-xp :is(.pa-xp-n, .pa-auto-mag, .pa-xp-name) { height: 24px; }
+    .pa-target-box .pa-field { gap: 4px; }
+    .pa-tw-notes > .pa-tw-label { display: none; }          /* the two fields name themselves */
+    .pa-tp-vis { height: clamp(140px, 22vh, 200px); }
+}
+/* the sky, top: tonight's altitude and the survey image side by side (the image as tall as the chart); under them the
+   light curve across the full width */
+.pa-target-box { --tw-sky: clamp(170px, 26vh, 250px); }
+.pa-target-preview { grid-template-columns: minmax(0, 1fr) var(--tw-sky); grid-template-rows: auto minmax(0, 1fr); }
+.pa-tp-row > .pa-tp-sec:first-child { grid-column: 1; grid-row: 1; }
+.pa-tp-row > .pa-tp-sec:last-child { grid-column: 2; grid-row: 1; }
+.pa-tp-lcsec { grid-column: 1 / -1; grid-row: 2; }
+.pa-tp-vis { height: calc(var(--tw-sky) - 24px); }
+@media (max-height: 880px) and (min-width: 1101px) and (min-height: 701px) {
+    .pa-target-box { --tw-sky: clamp(160px, 24vh, 210px); }
+    .pa-tp-vis { height: calc(var(--tw-sky) - 24px); }
+}
+@media (max-width: 640px) {
+    .pa-target-preview { grid-template-columns: minmax(0, 1fr); }
+    .pa-tp-row > .pa-tp-sec:first-child, .pa-tp-row > .pa-tp-sec:last-child, .pa-tp-lcsec { grid-column: 1; grid-row: auto; }
+    .pa-tp-vis { height: 200px; }
+}
+/* messages from Auto exposure sit on the Exposures line, so nothing below moves when one appears */
+.pa-tw-exp .pa-tw-label .pa-auto-exp-hint { display: inline; min-height: 0; margin: 0 0 0 auto; font-size: 0.75rem; font-weight: 400; line-height: 16px; color: var(--tw-warn);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pa-tw-exp .pa-tw-label .pa-auto-exp-hint:empty { display: none; }
+.pa-tw-exp .pa-tw-label .pa-auto-exp-hint:not(:empty) + .pa-total-exposure { margin-left: 12px; }
+/* tall screens: the room goes to the notes */
+@media (min-height: 1000px) and (min-width: 1101px) { .pa-target-box textarea { min-height: 104px; } }
+@media (max-width: 640px) {
+    /* phones: 16 px inputs (no iOS zoom) need these widths to show 18.40 / 300 / 12 */
+    .pa-xp .pa-auto-mag { width: 68px; padding: 0 4px; }
+    .pa-xp .pa-xp-fr > .pa-xp-n:first-child { width: 58px; padding: 0 4px; }
+    .pa-xp .pa-xp-fr > .pa-xp-n:last-child { width: 42px; padding: 0 4px; }
+    .pa-xp .pa-xp-fr > span { margin: 0 3px; }
+    .pa-xp .pa-xp-c { width: 22px; }
 }
