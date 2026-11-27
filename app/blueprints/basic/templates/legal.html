@@ -1,0 +1,56 @@
+{% extends '_base.html' %}
+{#- /privacy and /terms (legal.py): one reading page, English or 繁體中文 (?lang=), contents list from the h2s. -#}
+{% set _title = docs[doc][lang] %}
+{% block title %}{{ _title }} · Kinder{% endblock %}
+{% block head %}
+    <meta name="description" content="Kinder {{ docs[doc]['en'] }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/legal.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="kw-page legal-page" lang="{{ 'en' if lang == 'en' else 'zh-Hant' }}">
+    <header class="legal-head">
+        <nav class="legal-switch" aria-label="{{ 'Documents' if lang == 'en' else '文件' }}">
+            {% for key in docs %}
+            <a href="/{{ key }}?lang={{ lang }}" class="kw-seg-item{% if key == doc %} is-on{% endif %}"{% if key == doc %} aria-current="page"{% endif %}>{{ docs[key][lang] }}</a>
+            {% endfor %}
+        </nav>
+        <nav class="legal-switch" aria-label="Language">
+            <a href="/{{ doc }}?lang=en" class="kw-seg-item{% if lang == 'en' %} is-on{% endif %}" lang="en" hreflang="en">English</a>
+            <a href="/{{ doc }}?lang=zh" class="kw-seg-item{% if lang == 'zh' %} is-on{% endif %}" lang="zh-Hant" hreflang="zh-Hant">中文</a>
+        </nav>
+    </header>
+
+    <div class="kw-read legal-read">
+        <aside class="kw-read-toc legal-toc" id="legalToc">
+            <p class="legal-toc-h">{{ 'On this page' if lang == 'en' else '本頁內容' }}</p>
+            <ol id="legalTocList"></ol>
+        </aside>
+        <article class="legal-body" id="legalBody">
+            <h1>{{ _title }}</h1>
+            <p class="legal-updated">{{ 'Last updated' if lang == 'en' else '最後更新' }}: <time datetime="{{ updated }}">{{ updated }}</time></p>
+            {% include 'legal/' ~ doc ~ '_' ~ lang ~ '.html' %}
+        </article>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+    document.querySelectorAll('.legal-mail').forEach((a) => { a.href = `mailto:${a.dataset.user}@${a.dataset.domain}`; });
+    const heads = [...document.querySelectorAll('#legalBody h2[id]')];
+    const list = document.getElementById('legalTocList');
+    if (heads.length < 2 || !list) return;
+    for (const h of heads) {
+        const li = document.createElement('li');
+        const a = document.createElement('a');
+        a.href = `#${h.id}`;
+        a.textContent = h.textContent;
+        li.appendChild(a);
+        list.appendChild(li);
+    }
+})();
+</script>
+{% endblock %}

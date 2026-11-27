@@ -1,141 +1,96 @@
 {% extends '_base.html' %}
-{#- GREAT Lab documents: a card per document (documents.js: create, drag to reorder, pin). -#}
+{#- Lab Info › Docs: a feed of document cards like EAU's News & Articles (documents.py documents_list).
+    Category filter on the left of the page bar; admins get New document and Drafts on the right and a ⋯ menu
+    per card (Edit, Important, Delete). documents.js handles the ⋯ actions. -#}
 {% block title %}Docs - Lab Info - Kinder{% endblock %}
 {% block head %}
-    <meta name="description" content="GREAT Lab Documents">
-    <style>
-        /* ── Document cards (kw-list) ── */
-        .doc-list { list-style: none; padding: 0; margin: 0; }
-        .doc-item {
-            flex-direction: row !important;   /* kw-list makes cards columns; a document card is one row */
-            align-items: center;
-            gap: 10px;
-            padding: 10px 12px;
-            transition: border-color var(--kw-transition-fast), background var(--kw-transition-fast);
-        }
-        .doc-item:hover { border-color: rgba(255, 255, 255, 0.28); background: var(--kw-surface-hover); }
-        .doc-item a {
-            flex: 1 1 auto;
-            min-width: 0;
-            min-height: 40px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 4px;
-            text-decoration: none;
-            color: var(--kw-text-primary);
-            font-size: 1rem;
-            font-weight: 600;
-        }
-        .doc-item a::after { display: none !important; }
-        .doc-item a:hover { color: var(--kw-text-white); }
-        .doc-title { min-width: 0; overflow-wrap: anywhere; }
-        .pin-icon { flex-shrink: 0; fill: var(--kw-accent); stroke: var(--kw-accent); margin-right: 0 !important; }
-        .doc-actions { display: flex; gap: 6px; flex-shrink: 0; }
-        .btn-icon {
-            width: 36px; height: 36px; min-height: 0; padding: 0;
-            display: inline-flex; align-items: center; justify-content: center;
-            background: transparent;
-            border: 1px solid var(--kw-border);
-            border-radius: var(--kw-radius-md);
-            color: var(--kw-text-secondary);
-            cursor: pointer;
-            transition: background var(--kw-transition-fast), color var(--kw-transition-fast), border-color var(--kw-transition-fast);
-        }
-        .btn-icon:hover { background: var(--kw-surface-hover); color: var(--kw-text-white); border-color: rgba(255, 255, 255, 0.28); }
-        .btn-icon.active { color: var(--kw-accent); border-color: var(--kw-accent-border); background: var(--kw-accent-dim); }
-        .drag-handle { cursor: grab; color: var(--kw-text-faint); padding: 0 2px; display: flex; align-items: center; flex-shrink: 0; }
-        .drag-handle:active { cursor: grabbing; }
-        .doc-list > .kw-panel + .kw-panel { margin-top: 0; }
-        .doc-item.dragging { opacity: 0.5; }
-        .doc-item.drag-over { box-shadow: inset 0 2px 0 var(--kw-accent); }
-
-        /* ── Admin: new document (page bar) ── */
-        .docs-admin-panel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-        .docs-input { width: 220px; max-width: 100%; min-height: 32px; }
-        .docs-message { font-size: 0.82rem; color: var(--kw-text-secondary); }
-
-        /* ── Scroll to top ── */
-        .scroll-to-top {
-            position: fixed; bottom: 30px; right: 30px;
-            opacity: 0; pointer-events: none;
-            width: 44px; height: 44px; padding: 0;
-            display: flex; align-items: center; justify-content: center;
-            border: none; border-radius: 50%;
-            background: var(--kw-accent); color: var(--color-accent-text);
-            box-shadow: var(--kw-shadow);
-            cursor: pointer; z-index: 1000;
-            transition: opacity 0.3s, transform 0.2s, background-color 0.3s;
-        }
-        .scroll-to-top:hover { background: var(--kw-accent-hover); transform: translateY(-3px); }
-
-        @media (max-width: 860px) {
-            .docs-admin-panel { width: 100%; flex-wrap: nowrap; }
-            .docs-input { flex: 1; width: auto; min-width: 0; min-height: 40px; }
-        }
-    </style>
+    <meta name="description" content="GREAT Lab documents">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/documents.css') }}">
 {% endblock %}
 
-{% block bar_left %}<p class="kw-lead">Tutorials, manuals, and resources.</p>{% if is_admin %}<span class="docs-message" id="documentsAdminMessage"></span>{% endif %}{% endblock %}
+{% macro ic(path) -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ path|safe }}</svg>
+{%- endmacro %}
+{% set I_PIN = '<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>' %}
+
+
 {% block bar_right %}{% if is_admin %}
-    <div class="docs-admin-panel" id="docsAdminPanel" data-editable="{{ 'true' if documents_editable else 'false' }}">
-        <input class="docs-input" id="newDocumentFilename" type="text" placeholder="new_document.md" aria-label="New document filename">
-        <button class="kw-btn kw-btn-primary kw-btn-sm" id="createDocumentBtn" type="button" {% if not documents_editable %}disabled{% endif %}>Create document</button>
-    </div>
+<div class="docs-head-actions">
+    {% if show_drafts %}
+    <a href="{{ url_for('private_area.documents_list') }}" class="kw-btn kw-btn-sm">Published</a>
+    {% elif draft_count %}
+    <a href="{{ url_for('private_area.documents_list', drafts='1') }}" class="kw-btn kw-btn-sm">{{ ic('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/>') }}Drafts {{ draft_count }}</a>
+    {% endif %}
+    {% if documents_editable %}
+    <a href="{{ url_for('private_area.document_new', category=category if category in categories else None) }}" class="kw-btn kw-btn-sm kw-btn-primary">{{ ic('<path d="M5 12h14"/><path d="M12 5v14"/>') }}New document</a>
+    {% endif %}
+</div>
 {% endif %}{% endblock %}
 
 {% block content %}
 <div class="kw-page docs-page">
+<div class="docs-bar docs-toolbar">
+    <nav class="kw-seg docs-filters" aria-label="Categories">
+        {% set qd = {'drafts': '1'} if show_drafts else {} %}
+        <a href="{{ url_for('private_area.documents_list', **qd) }}" class="kw-seg-item{% if category == 'all' %} is-on{% endif %}"{% if category == 'all' %} aria-current="page"{% endif %}>All{% if not show_drafts %} <span class="kw-n">{{ total }}</span>{% endif %}</a>
+        {% for key, label in categories.items() if show_drafts or counts[key] or category == key %}
+        <a href="{{ url_for('private_area.documents_list', category=key, **qd) }}" class="kw-seg-item{% if category == key %} is-on{% endif %}"{% if category == key %} aria-current="page"{% endif %}>{{ label }}{% if not show_drafts %} <span class="kw-n">{{ counts[key] }}</span>{% endif %}</a>
+        {% endfor %}
+    </nav>
+</div>
+    {% if show_drafts %}<p class="docs-drafts-note">Drafts are only visible to admins until they are published.</p>{% endif %}
 
     {% if documents %}
-    <ul class="kw-list doc-list" id="docList">
+    <div class="doc-feed" id="docFeed">
         {% for doc in documents %}
-        <li class="kw-panel doc-item" data-filename="{{ doc.filename }}" {% if is_admin or documents_editable %}draggable="true"{% endif %}>
-            {% if is_admin or documents_editable %}
-            <div class="drag-handle" title="Drag to reorder">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>
+        {% set href = url_for('private_area.document_view', filename=doc.filename) %}
+        <article class="doc-post{% if not doc.cover %} no-image{% endif %}{% if doc.draft %} is-draft{% endif %}{% if doc.is_pinned %} is-pinned{% endif %}" data-filename="{{ doc.filename }}">
+            <div class="doc-post-avatar" aria-hidden="true">
+                {% if doc.author_picture %}<img src="{{ doc.author_picture }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}{{ doc.author[:1]|upper }}{% endif %}
             </div>
-            {% endif %}
-            <a href="{{ url_for('private_area.document_view', filename=doc.filename) }}">
-                {% if doc.is_pinned %}
-                <svg class="pin-icon" width="16" height="16" viewBox="0 0 24 24" fill="#f6c453" stroke="#f6c453" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 5px;"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 1 0-6 0v4.68a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>
+            <div class="doc-post-body">
+                <div class="doc-post-meta">
+                    {% if doc.is_pinned %}<span class="doc-post-pin">{{ ic(I_PIN) }}Important</span>{% endif %}
+                    <span class="doc-post-author">{{ doc.author }}</span>
+                    <span aria-hidden="true">·</span>
+                    <time class="doc-post-time" datetime="{{ doc.updated }}">{{ doc.updated }}</time>
+                    {% if doc.draft %}<span class="doc-post-draft">Draft</span>{% endif %}
+                    <span class="doc-post-badge">{{ doc.category_label }}</span>
+                </div>
+                <a href="{{ href }}" class="doc-post-link">
+                    <h2 class="doc-post-title">{{ doc.title }}</h2>
+                    {% if doc.excerpt %}<p class="doc-post-excerpt">{{ doc.excerpt }}</p>{% endif %}
+                    {% if doc.cover %}<div class="doc-post-cover"><img src="{{ doc.cover }}" alt="" loading="lazy" decoding="async"></div>{% endif %}
+                </a>
+                <div class="doc-post-stats">
+                    <span>{{ ic('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>') }}{{ doc.minutes }} min read</span>
+                </div>
+                {% if is_admin and documents_editable %}
+                <details class="doc-post-actions">
+                    <summary class="doc-more-btn" aria-label="Manage {{ doc.title }}" title="Manage">{{ ic('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>') }}</summary>
+                    <div class="doc-more-menu">
+                        <a href="{{ url_for('private_area.document_edit', filename=doc.filename) }}" class="doc-action">{{ ic('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>') }}Edit</a>
+                        <button type="button" class="doc-action" data-doc-pin="{{ '0' if doc.is_pinned else '1' }}">{{ ic(I_PIN) }}{{ 'Unmark important' if doc.is_pinned else 'Mark important (pin)' }}</button>
+                        <button type="button" class="doc-action is-danger" data-doc-delete>{{ ic('<path d="M3 6h18"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>') }}Delete</button>
+                    </div>
+                </details>
                 {% endif %}
-                <span class="doc-title">{{ doc.title }}</span>
-            </a>
-            {% if is_admin or documents_editable %}
-            <div class="doc-actions">
-                <button class="btn-icon {{ 'active' if doc.is_pinned else '' }}" data-filename="{{ doc.filename }}" data-pinned="{{ 'true' if doc.is_pinned else 'false' }}" onclick="togglePin(this.dataset.filename, this.dataset.pinned !== 'true')" title="{{ 'Unpin' if doc.is_pinned else 'Pin to top' }}">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.68V6a3 3 0 1 0-6 0v4.68a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>
-                </button>
             </div>
-            {% endif %}
-        </li>
+        </article>
         {% endfor %}
-    </ul>
+    </div>
     {% else %}
-    <div class="kw-panel"><div class="kw-empty">No documents available at the moment.</div></div>
+    <div class="docs-empty">
+        {{ ic('<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2"/>') }}
+        <p>{% if show_drafts %}No drafts.{% else %}Nothing here yet.{% endif %}</p>
+        {% if is_admin and documents_editable and not show_drafts %}
+        <a href="{{ url_for('private_area.document_new', category=category if category in categories else None) }}" class="kw-btn kw-btn-primary">Write the first document</a>
+        {% endif %}
+    </div>
     {% endif %}
 </div>
 {% endblock %}
 
-{% block after_main %}
-    <button id="scrollToTopBtn" class="scroll-to-top" title="Go to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'});">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-    </button>
-{% endblock %}
-
 {% block scripts %}
-    <script>
-        window.addEventListener('scroll', function() {
-            var btn = document.getElementById("scrollToTopBtn");
-            if (window.scrollY > 300) {
-                btn.style.opacity = "1";
-                btn.style.pointerEvents = "auto";
-            } else {
-                btn.style.opacity = "0";
-                btn.style.pointerEvents = "none";
-            }
-        });
-    </script>
     <script src="{{ url_for('static', filename='js/documents.js') }}"></script>
 {% endblock %}

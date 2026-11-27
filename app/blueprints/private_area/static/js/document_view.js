@@ -1,195 +1,111 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const meta = document.getElementById('documentMeta');
-    const contentDiv = document.getElementById('content');
-    const editor = document.getElementById('markdownEditor');
-    const editorHint = document.getElementById('editorHint');
-    const toggleEditBtn = document.getElementById('toggleEditBtn');
-    const saveBtn = document.getElementById('saveDocBtn');
-    const cancelBtn = document.getElementById('cancelEditBtn');
-    const statusText = document.getElementById('docStatusText');
-    const editToggle = document.getElementById('documentsEditableToggle');
+// One document (document_view.html): render the Markdown, build the contents list from its headings,
+// highlight the section being read, show reading progress / time left, and zoom images.
+(function () {
+    'use strict';
+    const root = document.getElementById('docRead');
+    const body = document.getElementById('docBody');
+    if (!root || !body) return;
+    const filename = root.dataset.filename;
+    const title = (root.dataset.title || '').trim();
+    const minutes = Number(root.dataset.minutes) || 1;
 
-    if (!meta || !contentDiv) return;
-
-    const filename = meta.dataset.filename;
-    const isAdmin = meta.dataset.isAdmin === 'true';
-    // Always allow editing on the client side; server may still enforce permissions.
-    let editable = true;
-
-    let markdownText = '';
-    let rawMarkdownText = '';
-
-    const setStatus = (text, isError = false) => {
-        if (!statusText) return;
-        statusText.textContent = text;
-        statusText.style.color = isError ? '#ff7b72' : '#98a2b3';
+    const render = (md) => {
+        if (window.marked && window.DOMPurify) body.innerHTML = DOMPurify.sanitize(marked.parse(md || ''));
+        else body.textContent = md || '';
     };
 
-    // Removed editToggle/server-controlled editable setting — client-side editing always allowed.
-
-    // Markdown -> sanitised HTML. If DOMPurify failed to load, fall back to plain
-    // text rather than injecting unsanitised HTML.
-    const renderSafe = (target, text) => {
-        if (window.DOMPurify) {
-            target.innerHTML = DOMPurify.sanitize(marked.parse(text || ''));
-        } else {
-            target.textContent = text || '';
-        }
+    const slug = (text, used) => {
+        let s = text.toLowerCase().trim().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'section';
+        let out = s, n = 2;
+        while (used.has(out)) out = `${s}-${n++}`;
+        used.add(out);
+        return out;
     };
 
-    const renderMarkdown = () => {
-        renderSafe(contentDiv, markdownText);
-    };
-
-    const switchMode = (enableEdit) => {
-        editing = enableEdit;
-        
-        const editorContainer = document.getElementById('editorContainer');
-        if (editorContainer) {
-            editorContainer.style.display = enableEdit ? 'flex' : 'none';
-        } else if (editor) {
-            editor.style.display = enableEdit ? 'block' : 'none';
-        }
-        
-        contentDiv.style.display = enableEdit ? 'none' : 'block';
-        if (editorHint) editorHint.style.display = enableEdit ? 'block' : 'none';
-
-        if (toggleEditBtn) toggleEditBtn.style.display = enableEdit ? 'none' : 'inline-block';
-        if (saveBtn) saveBtn.style.display = enableEdit ? 'inline-block' : 'none';
-        if (cancelBtn) cancelBtn.style.display = enableEdit ? 'inline-block' : 'none';
-
-        if (enableEdit) {
-            if (editor) {
-                editor.value = rawMarkdownText || markdownText;
-                editor.focus();
-                const previewPane = document.getElementById('previewPane');
-                if (previewPane) {
-                    renderSafe(previewPane, editor.value);
-                }
-            }
-            setStatus('', false);
-        } else {
-            setStatus('', false);
-        }
-    };
-
-    if (editor) {
-        editor.addEventListener('input', () => {
-            const previewPane = document.getElementById('previewPane');
-            if (previewPane) {
-                renderSafe(previewPane, editor.value);
-            }
+    function buildToc() {
+        // The first heading repeats the title shown above it: drop it.
+        const first = body.firstElementChild;
+        if (first && /^H1$/.test(first.tagName) && first.textContent.trim() === title) first.remove();
+        const heads = [...body.querySelectorAll('h1, h2, h3')];
+        const top = heads.some((h) => h.tagName === 'H1') ? ['H1', 'H2'] : ['H2', 'H3'];
+        const used = new Set();
+        const items = heads.filter((h) => top.includes(h.tagName)).map((h) => {
+            h.id = h.id || slug(h.textContent, used);
+            return { id: h.id, text: h.textContent.trim(), sub: h.tagName === top[1] };
         });
+        if (items.length < 2) return [];
+        const html = items.map((it) => `<li class="${it.sub ? 'l3' : 'l2'}"><a href="#${encodeURIComponent(it.id)}" data-toc="${it.id}"></a></li>`).join('');
+        for (const id of ['docToc', 'docTocMobile']) {
+            const ol = document.getElementById(id);
+            ol.innerHTML = html;
+            ol.querySelectorAll('a').forEach((a, i) => { a.textContent = items[i].text; });
+        }
+        document.getElementById('docRail').hidden = false;
+        document.getElementById('docTocM').hidden = false;
+        document.getElementById('docTocN').textContent = items.length;
+        return items.map((it) => document.getElementById(it.id));
     }
 
-    const loadDocument = async () => {
+    function track(heads) {
+        const bar = document.getElementById('docProgress');
+        const left = document.getElementById('docLeft');
+        const links = [...document.querySelectorAll('[data-toc]')];
+        let raf = 0;
+        const update = () => {
+            raf = 0;
+            const r = body.getBoundingClientRect();
+            const total = Math.max(1, r.height - window.innerHeight * 0.6);
+            const done = Math.min(1, Math.max(0, -r.top / total));
+            bar.style.width = `${(done * 100).toFixed(1)}%`;
+            if (left) {
+                const m = Math.ceil(minutes * (1 - done));
+                left.textContent = done >= 0.98 ? 'Finished' : `About ${m} min left`;
+            }
+            let on = null;
+            for (const h of heads) if (h.getBoundingClientRect().top < 140) on = h.id;
+            links.forEach((a) => a.classList.toggle('is-on', a.dataset.toc === on));
+        };
+        const ask = () => { if (!raf) raf = requestAnimationFrame(update); };
+        window.addEventListener('scroll', ask, { passive: true });
+        window.addEventListener('resize', ask);
+        update();
+    }
+
+    // Close the phone contents block after a jump.
+    document.getElementById('docTocMobile').addEventListener('click', (e) => {
+        if (e.target.closest('a')) document.getElementById('docTocM').open = false;
+    });
+
+    // Images: click to see them full size.
+    const box = document.getElementById('docLightbox');
+    document.addEventListener('click', (e) => {
+        const img = e.target.closest('.doc-md img, img[data-zoom]');
+        if (img && box && box.showModal) {
+            box.querySelector('img').src = img.currentSrc || img.src;
+            box.showModal();
+            return;
+        }
+        if (e.target.closest('#docLightbox')) box.close();
+    });
+
+    (async () => {
         try {
             const resp = await fetch(`/api/documents/${encodeURIComponent(filename)}/content`);
             const data = await resp.json();
-            if (!resp.ok || !data.success) {
-                throw new Error(data.error || 'Load failed');
+            if (!resp.ok || !data.success) throw new Error(data.error || 'Could not load the document');
+            render(data.content);
+            const heads = buildToc();
+            track(heads);
+            if (location.hash) {
+                const t = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+                if (t) t.scrollIntoView();
             }
-            markdownText = data.content || '';
-            rawMarkdownText = data.raw_content || markdownText;
-            renderMarkdown();
-        } catch (err) {
-            contentDiv.innerHTML = `
-                <div class="loading-doc" style="color: #ef4444;">
-                    Error loading document: ${String(err.message || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}
-                </div>
-            `;
-            setStatus('Failed to load document.', true);
+        } catch (e) {
+            body.innerHTML = '';
+            const p = document.createElement('p');
+            p.className = 'doc-loading';
+            p.textContent = e.message;
+            body.appendChild(p);
         }
-    };
-
-    const saveDocument = async () => {
-        if (!isAdmin) return;
-        if (!editor) return;
-
-        setStatus('Saving...', false);
-        try {
-            const resp = await fetch(`/api/documents/${encodeURIComponent(filename)}/content`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: editor.value })
-            });
-            const data = await resp.json();
-            if (!resp.ok || !data.success) {
-                throw new Error(data.error || 'Save failed');
-            }
-            await loadDocument(); // Reload to get newly parsed markdown (if any new {{hide=...}} added)
-            switchMode(false);
-            setStatus('Saved.', false);
-        } catch (err) {
-            setStatus(`Save failed: ${err.message}`, true);
-        }
-    };
-
-    const uploadPastedImage = async (file, textarea) => {
-        const formData = new FormData();
-        formData.append('image', file, file.name || 'pasted.png');
-
-        const resp = await fetch('/api/documents/upload-image', {
-            method: 'POST',
-            body: formData
-        });
-        const data = await resp.json();
-        if (!resp.ok || !data.success) {
-            throw new Error(data.error || 'Upload failed');
-        }
-
-        const insertion = `${data.markdown}\n`;
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const before = textarea.value.slice(0, start);
-        const after = textarea.value.slice(end);
-        textarea.value = before + insertion + after;
-        const nextCursor = start + insertion.length;
-        textarea.selectionStart = nextCursor;
-        textarea.selectionEnd = nextCursor;
-    };
-
-    if (toggleEditBtn) {
-        toggleEditBtn.addEventListener('click', () => {
-            switchMode(true);
-        });
-    }
-
-    if (saveBtn) {
-        saveBtn.addEventListener('click', saveDocument);
-    }
-
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => {
-            switchMode(false);
-        });
-    }
-
-    if (editor) {
-        editor.addEventListener('paste', async (event) => {
-            if (!editing) return;
-            const items = event.clipboardData?.items || [];
-            const imageItem = Array.from(items).find(item => item.type && item.type.startsWith('image/'));
-            if (!imageItem) return;
-
-            event.preventDefault();
-            const file = imageItem.getAsFile();
-            if (!file) return;
-
-            setStatus('Uploading pasted image...', false);
-            try {
-                await uploadPastedImage(file, editor);
-                setStatus('Image uploaded. Markdown inserted.', false);
-            } catch (err) {
-                setStatus(`Image upload failed: ${err.message}`, true);
-            }
-        });
-    }
-
-    if (!isAdmin) {
-        if (statusText) statusText.style.display = 'none';
-    }
-
-    loadDocument();
-    switchMode(false);
-});
+    })();
+})();

@@ -1,0 +1,82 @@
+{% import 'legal/_m.html' as m with context %}
+<p>Kinder (kinder.astro.ncu.edu.tw, "the site") is run by GREAT Lab at the Graduate Institute of Astronomy, National Central University ("we", "us"). It is used to follow up transients, plan observations and organise research data. We collect, process and use your personal data under Taiwan's Personal Data Protection Act. This policy explains what we collect, why, how long we keep it, and what rights you have.</p>
+
+<h2 id="collect">1. What we collect</h2>
+<h3>(1) Account data</h3>
+<ul>
+    <li>If you sign in with Google: the email address, name and profile picture URL that Google provides. We never receive your Google password.</li>
+    <li>If you sign in with a username and password (created by an admin): your username and a hashed password. We do not store passwords in plain text.</li>
+    <li>Your role (guest, user, member, admin) and your groups, set by an admin. They decide which pages and data you can see.</li>
+</ul>
+<h3>(2) Content you create on the site</h3>
+<ul>
+    <li>Spectra, photometry, comments, tags, observing logs, observation requests (Triggers), calendar entries and documents you upload or write.</li>
+    <li>These are stored with your account, so other users with access can see who provided them.</li>
+</ul>
+<h3>(3) Preferences and notifications</h3>
+<ul>
+    <li>Display settings (background, colours and so on): on the server when you are signed in; otherwise only in your browser (localStorage).</li>
+    <li>If you turn on push notifications: the push subscription endpoint and keys your browser gives us. They are deleted when you turn notifications off.</li>
+    <li>If you create an API key or a calendar feed link: the key and the link token.</li>
+</ul>
+<h3>(4) Server logs</h3>
+<ul>
+    <li>For security and debugging, the server logs the time, URL, IP address, account and error messages of requests. Only admins can read these logs. They are kept for {{ m.fact(facts.log_days, ' days') }}.</li>
+</ul>
+<h3>(5) Cookies</h3>
+<ul>
+    <li>The site only uses the cookie needed to keep you signed in (a session cookie). There are no advertising or tracking cookies, and no third-party analytics such as Google Analytics.</li>
+    <li>You stay signed in for at most 30 days, and are signed out after 14 days without use.</li>
+    <li>If you install the site as an app (PWA), your browser caches the site's files so it can open offline.</li>
+</ul>
+
+<h2 id="use">2. How we use it</h2>
+<ul>
+    <li>To sign you in, know who you are, and control access by role and group.</li>
+    <li>To show who provided each piece of data, so research records can be traced.</li>
+    <li>To send notifications you asked for (push, email, the lab's chat tools), such as new-target alerts or duty reminders.</li>
+    <li>To keep the site secure, fix errors and prevent abuse.</li>
+</ul>
+<p>We do <strong>not</strong> sell or rent your personal data, and we do not use it for advertising.</p>
+
+<h2 id="third-party">3. Third-party services</h2>
+<p>Some features connect to these outside services:</p>
+<ul>
+    <li><strong>Google</strong>: signing in with a Google account.</li>
+    <li><strong>Web resources</strong>: CDNs for Google Fonts, Plotly and other libraries.</li>
+    <li><strong>Observatories and collaborators</strong>: when you send an observation request, the targets and settings are sent to Lulin Observatory or the collaborators involved.</li>
+</ul>
+<p>Each of these services has its own privacy policy, and we do not control how they handle data.</p>
+
+<h2 id="storage">4. Where data is kept and for how long</h2>
+<ul>
+    <li>Data is kept on servers and backup storage run by GREAT Lab at National Central University.</li>
+    <li>Account data is kept while your account exists. After an account is deleted, its personal data is deleted or de-identified within {{ m.fact(facts.delete_days, ' days') }}.</li>
+    <li>Science data you uploaded (spectra, photometry, observing logs) is part of the research record and may be kept after your account is deleted, still credited to you by name.</li>
+</ul>
+
+<h2 id="rights">5. Your rights</h2>
+<p>Under Article 3 of the Personal Data Protection Act, you may ask to:</p>
+<ul>
+    <li>check or read your personal data;</li>
+    <li>get a copy of it;</li>
+    <li>add to or correct it;</li>
+    <li>stop us collecting, processing or using it;</li>
+    <li>delete it.</li>
+</ul>
+<p>Some of your data can be changed on the Settings page. For anything else, email {{ m.email() }} and we will reply within 30 days. If you do not provide the account data we need, you will not be able to sign in to features that require access.</p>
+
+<h2 id="security">6. Security</h2>
+<p>We take reasonable measures to protect your data, including HTTPS, hashed passwords, limited sign-in sessions, access levels and a log of admin actions. No online service can be completely secure. If personal data is leaked, we will tell the affected users as the law requires.</p>
+
+<h2 id="minors">7. Minors</h2>
+<p>The site is meant for researchers and students. If you are under 18, please use it with the consent of your legal guardian.</p>
+
+<h2 id="changes">8. Changes to this policy</h2>
+<p>When this policy changes, we update the date on this page. For major changes we post a notice on the site or tell signed-in users.</p>
+
+<h2 id="contact">9. Contact</h2>
+<p>GREAT Lab, Graduate Institute of Astronomy, National Central University<br>
+Email: {{ m.email() }}<br>
+Address: No. 300, Zhongda Rd., Zhongli Dist., Taoyuan City 320317, Taiwan</p>
+<p class="legal-note">If the English and Chinese versions differ, the Chinese version prevails.</p>

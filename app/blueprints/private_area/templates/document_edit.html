@@ -1,0 +1,81 @@
+{% extends '_base.html' %}
+{#- Write or edit one document (admins), like EAU's post form: cover, title, summary, category, Markdown body with a
+    live preview beside it (phones: Write / Preview switch). Paste or drop an image into the body to upload it.
+    document_edit.js saves through POST /api/documents/save. -#}
+{% block title %}{{ 'Edit' if doc else 'New' }} document - Docs - Kinder{% endblock %}
+{% block head %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/documents.css') }}">
+    <script src="{{ url_for('static', filename='vendor/marked-18.0.14.umd.js') }}" integrity="sha384-2vpGtuKqJvFlwJqYnf/wUMuzUfhUnYBt9oay0e2yaFcq0Dh6/aEbQ8YAOeKGzlYo"></script>
+    <script src="{{ url_for('static', filename='vendor/purify-3.4.16.min.js') }}" integrity="sha384-a7SzOxErzJ3ZpQz0zJ32d67dSitNzPcbfybc/ykU9KJhMgZkwqfSxlhhdJRS+XGL"></script>
+{% endblock %}
+
+{% block bar_left %}
+    <a href="{{ url_for('private_area.document_view', filename=doc.filename) if doc else url_for('private_area.documents_list') }}" class="kw-btn kw-btn-sm kw-btn-ghost">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+        {{ 'Back to the document' if doc else 'All documents' }}
+    </a>
+{% endblock %}
+{% block bar_right %}
+    <span class="doc-edit-status" id="docEditStatus" role="status"></span>
+    <button type="button" class="kw-btn kw-btn-sm" id="docSaveDraft">Save draft</button>
+    <button type="button" class="kw-btn kw-btn-sm kw-btn-primary" id="docPublish">{{ 'Update' if doc and not doc.draft else 'Publish' }}</button>
+{% endblock %}
+
+{% block content %}
+<div class="kw-page doc-edit-page">
+    <div class="kw-seg doc-edit-tabs" role="tablist" aria-label="Write or preview">
+        <button type="button" class="kw-seg-item is-on" role="tab" aria-selected="true" data-pane="write">Write</button>
+        <button type="button" class="kw-seg-item" role="tab" aria-selected="false" data-pane="preview">Preview</button>
+    </div>
+
+    <div class="doc-edit" id="docEdit" data-pane="write" data-filename="{{ doc.filename if doc else '' }}">
+        <form class="doc-edit-form" id="docEditForm" autocomplete="off">
+            <div class="kw-field">
+                <label for="docTitle">Title</label>
+                <input type="text" id="docTitle" class="doc-title-input" maxlength="200" required value="{{ doc.title if doc else '' }}" placeholder="e.g. How to run the Lulin pipeline">
+            </div>
+            <div class="kw-field">
+                <label for="docSummary">Summary</label>
+                <textarea id="docSummary" rows="2" maxlength="600" placeholder="One or two sentences shown on the card and under the title">{{ doc.summary if doc else '' }}</textarea>
+            </div>
+            <div class="doc-edit-row">
+                <div class="kw-field">
+                    <label for="docCategory">Category</label>
+                    <select id="docCategory">
+                        {% for key, label in categories.items() %}<option value="{{ key }}"{% if key == default_category %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="kw-field">
+                    <span class="kw-label">Cover image</span>
+                    <div class="doc-cover-pick">
+                        <div class="doc-cover-thumb" id="docCoverThumb">{% if doc and doc.cover %}<img src="{{ doc.cover }}" alt="">{% else %}None{% endif %}</div>
+                        <label class="kw-btn kw-btn-sm" for="docCoverFile">Choose…</label>
+                        <input type="file" id="docCoverFile" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+                        <button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" id="docCoverRemove"{% if not (doc and doc.cover) %} hidden{% endif %}>Remove</button>
+                        <input type="hidden" id="docCover" value="{{ doc.cover if doc else '' }}">
+                    </div>
+                </div>
+            </div>
+            <div class="doc-checks">
+                <label><input type="checkbox" id="docPinned"{% if doc and doc.is_pinned %} checked{% endif %}> Important (pin to the top)</label>
+            </div>
+            <div class="kw-field">
+                <label for="docBodyInput">Body (Markdown)</label>
+                <textarea id="docBodyInput" class="doc-body-input" spellcheck="false" placeholder="## First section&#10;&#10;Write in Markdown. Paste or drop an image to upload it.">{{ doc.body if doc else '' }}</textarea>
+                <p class="doc-help"><code>## Heading</code> makes a section in the contents · <code>**bold**</code> · <code>[link](https://…)</code> · <code>```</code> for code · paste or drop images · <code>{{ '{{' }}hide=KEY{{ '}}' }}</code> shows a value from tutorials/.env to Lab members only</p>
+            </div>
+        </form>
+
+        <section class="doc-edit-preview" aria-label="Preview">
+            <p class="doc-edit-preview-k">Preview</p>
+            <h1 class="doc-read-title" id="pvTitle"></h1>
+            <p class="doc-read-dek" id="pvSummary"></p>
+            <div class="doc-md" id="pvBody"></div>
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='js/document_edit.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% import 'legal/_m.html' as m with context %}
+<p>Welcome to Kinder. By using the site you agree to these terms. If you do not agree, please do not use the site.</p>
+
+<h2 id="service">1. The service</h2>
+<p>Kinder offers a transient data browser (Marshal), observation planning tools, astronomy calculators, and research features for GREAT Lab members (Pipeline, DETECT, Triggers and others). Some features need you to sign in, or need an admin to give you a role or group.</p>
+
+<h2 id="account">2. Your account</h2>
+<ul>
+    <li>Give correct information, and keep your account, password and API keys to yourself. Do not let anyone else use them.</li>
+    <li>Anything done through your account counts as done by you.</li>
+    <li>If someone else gets into your account, tell an admin right away.</li>
+    <li>Admins may change your role and access as research needs require.</li>
+</ul>
+
+<h2 id="rules">3. Acceptable use</h2>
+<p>When using the site, you agree not to:</p>
+<ul>
+    <li>try to reach other accounts, pages or data without permission;</li>
+    <li>disrupt or damage the site, for example with floods of automated requests, attacks or vulnerability scans;</li>
+    <li>use the API beyond reasonable limits, or get around access limits;</li>
+    <li>upload malware, false data, or content that infringes other people's rights;</li>
+    <li>use unpublished data for anything these terms do not allow.</li>
+</ul>
+
+<h2 id="data">4. Data and intellectual property</h2>
+<ul>
+    <li><strong>Public data</strong>: data from outside sources such as TNS and sky surveys belongs to its original providers. When you use it, acknowledge each source as it requires.</li>
+    <li><strong>Data you upload</strong>: you keep your rights to it, and you allow the site to store and display it, and to share it with other users according to their access, in order to run the service.</li>
+    <li><strong>Unpublished data</strong>: data from GREAT Lab and its collaborations that has not been published (such as unpublished observations, photometry, spectra and analysis results) is only for users with access, within the research collaboration. Do not pass it on, make it public or publish it without the consent of the data provider or GREAT Lab.</li>
+    <li>The site's code, interface design and documents belong to GREAT Lab, with all rights reserved. The code is not released under an open-source licence.</li>
+</ul>
+
+<h2 id="publishing">5. Publications and acknowledgement</h2>
+<p>If you publish data or results obtained through the site, include GREAT Lab and Kinder as authors or in the acknowledgements, following the collaboration's rules.{% if facts.acknowledgement %} Suggested acknowledgement:</p>
+<blockquote>{{ facts.acknowledgement }}</blockquote>{% else %}</p>{% endif %}
+
+<h2 id="disclaimer">6. Disclaimer</h2>
+<ul>
+    <li>Data and results on the site (including photometry, redshifts, visibility and exposure time estimates) are provided "as is", for research reference only. We do not guarantee that they are correct, complete or up to date.</li>
+    <li>The site may be unavailable during maintenance, after faults, or when outside services fail. We are not liable for losses this causes.</li>
+    <li>Linked outside websites are responsible for their own content.</li>
+</ul>
+
+<h2 id="termination">7. Suspension and termination</h2>
+<p>If you break these terms, an admin may suspend or close your account without notice and remove the content involved. You may contact us at any time to have your account deleted.</p>
+
+<h2 id="changes">8. Changes to these terms</h2>
+<p>We may change these terms and will update the date on this page when we do. If you keep using the site after a change, you accept the new terms.</p>
+
+<h2 id="law">9. Governing law</h2>
+<p>These terms are governed by the laws of the Republic of China (Taiwan).</p>
+
+<h2 id="contact">10. Contact</h2>
+<p>Email: {{ m.email() }}</p>
+<p class="legal-note">If the English and Chinese versions differ, the Chinese version prevails.</p>

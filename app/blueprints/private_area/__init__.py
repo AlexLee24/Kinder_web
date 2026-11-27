@@ -21,3 +21,9 @@ from . import (  # noqa: E402,F401
     special_run,
     targets,
 )
+
+from . import lab_pages  # noqa: E402
+
+# Every Lab page (lab_pages.LAB_NAV) is guarded here, so a page added to the list is protected at once.
+private_area_bp.before_app_request(lab_pages.gate)
+private_area_bp.add_app_template_global(lambda: lab_pages.visible_nav(), 'lab_nav')

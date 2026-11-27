@@ -1,0 +1,12 @@
+{#- Helpers for the legal texts (legal.py FACTS). tbd(): a fact not settled yet. -#}
+{% macro tbd() -%}
+<mark class="legal-tbd">{{ 'to be confirmed' if lang == 'en' else '待確認' }}</mark>
+{%- endmacro %}
+
+{% macro fact(value, suffix='') -%}
+{% if value is none %}{{ tbd() }}{% else %}{{ value }}{{ suffix }}{% endif %}
+{%- endmacro %}
+
+{% macro email() -%}
+<a class="legal-mail" href="#" data-user="{{ facts.email_user }}" data-domain="{{ facts.email_domain }}">{{ facts.email_user }} [at] {{ facts.email_domain }}</a>
+{%- endmacro %}

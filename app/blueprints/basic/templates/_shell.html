@@ -9,6 +9,8 @@
 {% set _user = session.user %}
 {% set _member = _user and _user.get('is_great_lab_member') %}
 {% set _admin = _user and _user.get('is_admin') %}
+{# Lab: the pages this viewer may open (private_area/lab_pages.py LAB_NAV; Admin › Permissions › Lab access) #}
+{% set _lab = lab_nav() %}
 
 {% set nav = [
     ('home', 'home', 'Home', '/', '', []),
@@ -29,16 +31,7 @@
         ('games', 'gamepad', 'Games', '', [('/games', 'Games')]),
         ('lobby', 'external', 'Game Lobby', '', [('https://eauastro.com/lobby?lang=en', 'Game Lobby')]),
     ]),
-    ('lab', 'flask', 'Lab', '/pipeline', 'member', [
-        ('pipeline', 'stack', 'Pipeline', '', [('/pipeline', 'Pipeline')]),
-        ('detect', 'shield-check', 'DETECT', '', [('/detect', 'TNS-DETECT'), ('/detect/lsst', 'LSST-DETECT'), ('/detect/crossmatch', 'Cross-match'), ('/detect/archives', 'Archives')]),
-        ('triggers', 'send', 'Triggers', '', [('/daily_trigger', 'Daily Trigger'), ('/direct_trigger', 'Direct Trigger'), ('/bots', 'Alerts')]),
-        ('calendar', 'calendar', 'Calendar', '', [('/lab_calendar', 'Calendar')]),
-        ('specialrun', 'bolt', 'Special Run', '', [('/special_run/euclid_slsn', 'Euclid-SLSN')] + ([('/special_run/lens_sim', 'Lens Simulator')] if _member and can_open_page('special_run_lens_sim') else [])),
-        ('epessto', 'users', 'ePessto++', '', [('/epessto_support', 'ePessto++ Support Team')]),
-        ('labinfo', 'building', 'Lab Info', '', [('/documents', 'Docs'), ('/greatlab_info', 'Links')]),
-    ]),
-] %}
+] + ([('lab', 'flask', 'Lab', _lab[0][4][0][0], '', _lab)] if _lab else []) %}
 {# Bottom of the rail: links out, the admin hub (its own side menu inside the page) and personal settings #}
 {% set nav_end = [
     ('about', 'info', 'About', '', '', [
@@ -172,12 +165,12 @@
 <div class="sh-rail" role="navigation" aria-label="Sections">
     {% for key, icon, label, href, need, groups in nav if allowed(need) %}
     {{ _rail_item(key, icon, label, href, groups if groups|length > 1 else [], 'sh-desk-only' if key in more_keys else '') }}
-    {% if key == 'transients' and _member %}
-    {#- Phones: Triggers gets its own tab (its three pages switch in the page bar) -#}
+    {% if key == 'transients' %}{% for gkey, _gi, _gl, _gn, tvs in _lab if gkey == 'triggers' %}
+    {#- Phones: Triggers gets its own tab (its pages switch in the page bar) -#}
     <div class="sh-rail-item sh-phone-only" data-sh-sec="triggers">
-        <a href="/daily_trigger" class="sh-rail-btn{% if ns.grp == 'triggers' %} is-on{% endif %}"{% if ns.grp == 'triggers' %} aria-current="page"{% endif %}>{{ ic('send') }}<span>Triggers</span></a>
+        <a href="{{ tvs[0][0] }}" class="sh-rail-btn{% if ns.grp == 'triggers' %} is-on{% endif %}"{% if ns.grp == 'triggers' %} aria-current="page"{% endif %}>{{ ic('send') }}<span>Triggers</span></a>
     </div>
-    {% endif %}
+    {% endfor %}{% endif %}
     {% endfor %}
     <span class="sh-rail-sp"></span>
     {% for key, icon, label, href, need, groups in nav_end if allowed(need) %}
