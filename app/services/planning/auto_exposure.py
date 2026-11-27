@@ -218,7 +218,7 @@ def magnitudes(name, typed_mag=None, detections=None, now_mjd=None):
             out[sf] = {'mag': typed, 'from': 'typed'}
             continue
         else:
-            raise NoMagnitude(f'{name} has no photometry on Kinder in the last {MAX_AGE_DAYS} days: type its magnitude in the MAG column under Auto Exposure.')
+            raise NoMagnitude(f'{name} has no photometry on Kinder in the last {MAX_AGE_DAYS} days: type a magnitude in the Mag column')
         out[sf] = {'mag': d['mag'], 'from': how, 'filter': d['filter'], 'mjd': d['mjd'], 'source': d['source']}
     return out
 
@@ -326,6 +326,17 @@ def plan_filter(castor_filter, ra, dec, mag, snr, when, min_exp=None, telescope=
         rec = plan.compute_snr(cat, **kw, single_exp_time=t, num_exposures=max(1, math.ceil(rec['total_s'] / t)))['chosen']
     return {'status': status, 'exp': int(rec['exp_s']), 'count': int(rec['frames']), 'elapsed': int(rec['elapsed_s']),
             'snr': round(float(rec['snr']), 1), 'sat_s': round(t_sat, 1), 'sky': _num(r['conditions'].get('sky_mag_arcsec2'))}
+
+
+def snr_for(castor_filter, ra, dec, mag, exp, count, when, telescope=TELESCOPE, camera=None, moon=True):
+    """CASTOR's S/N for count frames of exp s in one filter at `when` (the target form: frames typed by hand)."""
+    plan, cat = _castor()
+    if not moon:
+        cat = _NoMoon(cat)
+    kw = dict(site=SITE, telescope=telescope, camera=camera_for(telescope, camera), optic_filter=castor_filter, ra=float(ra), dec=float(dec),
+              mag=float(mag), observing_time_utc=when.isoformat().replace('+00:00', 'Z'), fwhm=_fwhm(cat))
+    row = plan.compute_snr(cat, **kw, single_exp_time=float(exp), num_exposures=int(count))['chosen']
+    return round(float(row['snr']), 1)
 
 
 def _num(v, nd=2):

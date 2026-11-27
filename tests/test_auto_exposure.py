@@ -108,10 +108,10 @@ def test_target_form_without_magnitude_cannot_use_auto(monkeypatch):
     auto, snr, choice, res, err, cam = targets._auto_exposure(
         {'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00', 'mag': '', 'auto_exposure': True, 'auto_snr': 15,
          'auto_plan': 'rp,gp'}, 'SLT')
-    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'MAG column' in err and cam is None
+    assert auto and snr == 15 and choice == 'gp,rp' and res is None and 'Mag column' in err and cam is None
     assert targets._auto_exposure({'auto_exposure': True, 'auto_snr': 1}, 'SLT')[4].startswith('Target S/N')
     lot = targets._auto_exposure({'auto_exposure': True, 'name': 'SN 2026x', 'ra': '10:00:00', 'dec': '+20:00:00'}, 'LOT')
-    assert lot[0] is True and lot[5] is None and 'MAG column' in lot[4]          # LOT auto now too
+    assert lot[0] is True and lot[5] is None and 'Mag column' in lot[4]          # LOT auto now too
     assert targets._auto_exposure({'auto_exposure': False, 'auto_camera': 'SLT_DZ936'}, 'SLT')[5] == 'SLT_DZ936'
 
 
@@ -229,3 +229,23 @@ def test_ignoring_the_moon_plans_for_a_moonless_sky():
     lit = ae.plan_filter('Sloan_r', 135.0685, 40.9214, 21.4, 10, when)
     dark = ae.plan_filter('Sloan_r', 135.0685, 40.9214, 21.4, 10, when, moon=False)
     assert dark['sky'] == fx['dark'] and dark['elapsed'] < lit['elapsed']
+
+
+@pytest.mark.skipif(not CASTOR_SRC.is_dir(), reason="vendored CASTOR not present")
+def test_snr_for_frames_typed_by_hand_matches_the_plan():
+    """The target form's live S/N: CASTOR's own S/N for the plan's frames, and more frames give more S/N."""
+    when = datetime(2026, 11, 26, 14, 48, tzinfo=timezone.utc)
+    p = ae.plan_filter('Sloan_r', 47.9087, -2.0267, 18.4, 20, when)
+    same = ae.snr_for('Sloan_r', 47.9087, -2.0267, 18.4, p['exp'], p['count'], when)
+    assert abs(same - p['snr']) < 0.5
+    assert ae.snr_for('Sloan_r', 47.9087, -2.0267, 18.4, p['exp'], p['count'] * 4, when) > same * 1.5
+
+
+def test_snr_api_checks_its_rows(admin_client):
+    base = {'ra': '10:00:00', 'dec': '+20:00:00', 'when': '2026-11-26T14:48:00+00:00'}
+    assert admin_client.post('/api/auto_exposure/snr', json=base).status_code == 400                       # no rows
+    bad = {**base, 'rows': [{'filter': 'hα', 'mag': 18, 'exp': 300, 'count': 1}]}
+    assert admin_client.post('/api/auto_exposure/snr', json=bad).status_code == 400
+    bad = {**base, 'rows': [{'filter': 'rp', 'mag': 18, 'exp': 300, 'count': 900}]}
+    assert admin_client.post('/api/auto_exposure/snr', json=bad).status_code == 400
+    assert admin_client.post('/api/auto_exposure/snr', json={**base, 'when': 'tonight', 'rows': [{'filter': 'rp', 'mag': 18, 'exp': 300, 'count': 1}]}).status_code == 400

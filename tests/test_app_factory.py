@@ -59,7 +59,8 @@ def test_route_count_is_stable(app):
     # 436 with the unlisted CASTOR check (/castor/snr_check and its /lock).
     # 440 with the unlisted New SLT page (/new_slt, its /lock, /new_slt/sheet and /new_slt/sheet/ops).
     # 443 with Admin › Routines (/admin/routines, its /status, /<rid>/log and /<rid>/run) in place of /admin/scheduled-jobs-status.
-    assert sum(1 for _ in app.url_map.iter_rules()) == 443
+    # 444 with the target form's live S/N for frames typed by hand (/api/auto_exposure/snr).
+    assert sum(1 for _ in app.url_map.iter_rules()) == 444
 
 
 def test_duplicate_rules_keep_precedence(app):

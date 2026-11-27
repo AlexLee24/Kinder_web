@@ -244,9 +244,9 @@
             min-height: 16px;
             transition: color 0.2s;
         }
-        .pa-name-hint.warn  { color: #ffa94d; }
-        .pa-name-hint.error { color: #ff6b6b; }
-        .pa-name-hint.ok    { color: #69db7c; }
+        .pa-name-hint.warn  { color: #e6b45c; }
+        .pa-name-hint.error { color: #e5484d; }
+        .pa-name-hint.ok    { color: #4cc38a; }
 
         /* Astro info row inside target name cell */
         .pa-astro-row {
@@ -344,11 +344,11 @@
         body[data-page="private_area.daily_trigger"] .pa-btn-log-action.active, body[data-page="private_area.daily_trigger"] .pa-btn-filter-toggle.active {
             background: var(--kw-accent-dim); border-color: var(--kw-accent-border); color: var(--kw-accent);
         }
-        body[data-page="private_area.daily_trigger"] :is(.pa-btn-send-trigger, .pa-btn-save, .pa-btn-auto-exp) {
+        body[data-page="private_area.daily_trigger"] :is(.pa-btn-send-trigger, .pa-btn-save) {
             min-height: 40px; padding: 0 16px; border: 0; border-radius: var(--kw-radius-md);
             background: var(--kw-accent); color: var(--color-accent-text); font-weight: 600; filter: none;
         }
-        body[data-page="private_area.daily_trigger"] :is(.pa-btn-send-trigger, .pa-btn-save, .pa-btn-auto-exp):hover { background: var(--kw-accent-hover); }
+        body[data-page="private_area.daily_trigger"] :is(.pa-btn-send-trigger, .pa-btn-save):hover { background: var(--kw-accent-hover); }
         body[data-page="private_area.daily_trigger"] .pa-btn-cancel { min-height: 40px; border-radius: var(--kw-radius-md); }
         body[data-page="private_area.daily_trigger"] .pa-btn-cancel:hover { background: rgba(255, 255, 255, 0.07); color: var(--kw-text-white); }
         body[data-page="private_area.daily_trigger"] .pa-btn-log-action:disabled:hover { background: var(--kw-surface, rgba(255,255,255,0.06)); }
@@ -838,14 +838,15 @@
     <!-- New Target Modal -->
     <dialog id="targetModal" class="pa-modal-overlay" aria-labelledby="target-modal-title">
         <div class="pa-modal-box pa-target-box">
-            <!-- one screen, no scrolling: target | exposure plan | the target tonight -->
+            <!-- one screen, no scrolling: the form on the left (target, notes, exposures), the sky on the right
+                 (tonight's altitude, the survey image, the light curve) -->
             <div class="pa-tw-head">
-                <h3 id="target-modal-title" tabindex="-1" autofocus>New Target</h3>
+                <h3 id="target-modal-title" tabindex="-1" autofocus>New target</h3>
                 <div class="pa-tw-actions">
                     <button type="button" onclick="closeTargetModal()" class="pa-btn-cancel">Cancel</button>
                     <button type="submit" form="add-target-form" class="pa-btn-save">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        <span id="target-modal-submit-label">Save Target</span>
+                        <span id="target-modal-submit-label">Save target</span>
                     </button>
                 </div>
             </div>
@@ -893,52 +894,45 @@
                         </label>
                     </div>
 
-                    <div class="pa-tw-pair">
-                        <label class="pa-field"><span class="pa-field-label">Note for Lulin</span>
-                            <input type="text" id="obs-plan" placeholder="Urgent: required" class="pa-input"></label>
-                        <label class="pa-field"><span class="pa-field-label">Note for GREATLab</span>
-                            <input type="text" id="obs-note-gl" placeholder="What and why" class="pa-input"></label>
-                    </div>
-
                 </section>
 
-                <!-- column 2: exposures -->
+                <section class="pa-tw-col pa-tw-notes" aria-label="Notes">
+                    <div class="pa-tw-label">Notes</div>
+                    <div class="pa-tw-pair">
+                        <label class="pa-field"><span class="pa-field-label">For Lulin (sent with the script)</span>
+                            <textarea id="obs-plan" rows="3" placeholder="Needed for Urgent" class="pa-input"></textarea></label>
+                        <label class="pa-field"><span class="pa-field-label">For GREAT Lab</span>
+                            <textarea id="obs-note-gl" rows="3" placeholder="What it is and why tonight" class="pa-input"></textarea></label>
+                    </div>
+                </section>
+
+                <!-- exposures: one table, a row per filter (tick to observe it); Auto Exposure fills its frames and S/N -->
                 <section class="pa-tw-col pa-tw-exp" aria-label="Exposures">
+                    <div class="pa-tw-label">Exposures
+                        <span id="auto-exp-hint" class="pa-auto-exp-hint" role="status"></span>
+                        <span id="total-exposure-container" class="pa-total-exposure"><span id="total-exposure-text"></span></span>
+                    </div>
                     <div id="slt-auto-exp-container" class="pa-auto-exp-container">
                         <div class="pa-auto-exp-row">
                             <button type="button" id="btn-auto-exp" onclick="applyAutoExposure()" class="pa-btn-auto-exp">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                                <span id="btn-auto-exp-label">Auto Exposure</span>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                                <span id="btn-auto-exp-label">Auto exposure</span>
                             </button>
-                            <span class="pa-tw-info" tabindex="0" title="CASTOR plans each filter for this S/N (blank: S/N 10) at the target's highest tonight, from its Kinder photometry: that filter's latest detection in the last 3 days, else the brightest of those 3 days in any filter; only with nothing in 3 days, older points up to 30 days (else the magnitudes typed in the MAG column). Updated every day after last night's photometry.">i</span>
+                            <span class="pa-tw-info" tabindex="0" title="CASTOR plans each filter for this S/N (blank: S/N 10) at the target's highest tonight, from its Kinder photometry: that filter's latest detection in the last 3 days, else the brightest of those 3 days in any filter; only with nothing in 3 days, older points up to 30 days (else the magnitudes typed in the Mag column). Updated every day after last night's photometry.">i</span>
                             <label class="pa-auto-snr" for="obs-auto-snr">S/N
                                 <input type="number" id="obs-auto-snr" value="" min="3" max="500" step="1" placeholder="Auto" onchange="onAutoSnrChange()">
                             </label>
-                            <label class="pa-auto-snr" for="obs-auto-camera">Camera
-                                <select id="obs-auto-camera" onchange="onAutoCameraChange()"><option value="">Auto (last used)</option></select>
-                            </label>
+                            <select id="obs-auto-camera" class="pa-auto-cam" aria-label="Camera" title="Camera" onchange="onAutoCameraChange()"><option value="">Auto (last used)</option></select>
                             <label class="pa-auto-snr" for="obs-auto-nomoon" title="Plan for a moonless sky: CASTOR leaves the Moon's light out">
                                 <input type="checkbox" id="obs-auto-nomoon" onchange="onAutoMoonChange()"> Ignore Moon
                             </label>
                         </div>
-                        <span id="auto-exp-hint" class="pa-auto-exp-hint"></span>
-                        <div id="auto-exp-plan" class="pa-auto-plan" hidden></div>
                     </div>
-
-                    <div class="pa-obs-config">
-                        <div class="pa-tw-label">Exposures
-                            <span id="total-exposure-container" class="pa-total-exposure">Total <span id="total-exposure-text"></span></span>
-                        </div>
-                        <div id="filter-rows-container" class="pa-filter-rows">
-                            <!-- JS generated rows -->
-                        </div>
-                        <div class="pa-filter-actions">
-                            <button type="button" onclick="addFilterRow('rp')" class="pa-btn-link">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg> Add filter
-                            </button>
-                            <button type="button" onclick="addAllFilters(['up', 'gp', 'rp', 'ip', 'zp'])" class="pa-btn-link">All ugriz</button>
-                        </div>
+                    <div id="filter-rows-container" class="pa-xp-wrap"></div>
+                    <div id="auto-exp-plan" class="pa-auto-plan" hidden></div>
+                    <div class="pa-xp-foot">
                         <div id="auto-exp-choose" class="pa-auto-choose-slot"></div>
+                        <button type="button" onclick="addFilterRow('')" class="pa-btn-link pa-xp-add">+ Other filter</button>
                     </div>
                 </section>
             </form>

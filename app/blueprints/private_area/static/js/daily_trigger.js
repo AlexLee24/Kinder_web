@@ -356,6 +356,8 @@ function openTargetModal(telescope) {
     autoCamera = '';
     autoMags = {};
     autoNoMoon = false; _syncNoMoon();
+    xpDraft = {}; xpSnr = {}; lastAutoKey = '';
+    const ah = document.getElementById('auto-exp-hint'); if (ah) ah.innerText = '';
     toggleTelescopeUI(telescope);
     renderFilterRows();
     _renderAutoPlan();
@@ -374,8 +376,8 @@ function _resetTargetModalChrome() {
     pendingSingleTrigger = false;
     var title = document.getElementById('target-modal-title');
     var label = document.getElementById('target-modal-submit-label');
-    if (title) title.textContent = 'New Target';
-    if (label) label.textContent = 'Save Target';
+    if (title) title.textContent = 'New target';
+    if (label) label.textContent = 'Save target';
 }
 
 // Real-time name hint as user types
@@ -388,21 +390,21 @@ function checkTargetNameHint(value) {
     if (!v) { hint.textContent = ''; hint.className = 'pa-name-hint'; return; }
     var upper = v.toUpperCase();
     if (upper.startsWith('ZTF')) {
-        hint.textContent = '\u26a0\ufe0f ZTF ID \u2014 prefer TNS/IAU or EP name. Confirmation required.';
+        hint.textContent = 'ZTF ID: use the TNS / IAU or EP name if there is one (asks on save)';
         hint.className = 'pa-name-hint warn';
     } else {
         var badPrefix = SURVEY_PREFIXES_CHECK.find(function(p) { return upper.startsWith(p); });
         if (badPrefix) {
-            hint.textContent = '\u26d4 Survey ID (' + badPrefix + ') \u2014 please use TNS/IAU or EP name.';
+            hint.textContent = 'Survey ID (' + badPrefix + '): use the TNS / IAU or EP name';
             hint.className = 'pa-name-hint error';
         } else if (/^(AT|SN|EPt?)\s/i.test(v) || /^(AT|SN|EPt?)\d/i.test(v)) {
-            hint.textContent = '\u2713 Good \u2014 TNS/IAU or EP name detected.';
+            hint.textContent = 'TNS / IAU or EP name';
             hint.className = 'pa-name-hint ok';
         } else if (/^LSST-\d{6,}$/i.test(v)) {
-            hint.textContent = '\u2713 LSST object without a TNS name \u2014 renamed automatically once TNS has it.';
+            hint.textContent = 'LSST object: renamed once TNS has it';
             hint.className = 'pa-name-hint ok';
         } else {
-            hint.textContent = '\u26a0\ufe0f Prefix not AT/SN/EP \u2014 confirmation required on submit.';
+            hint.textContent = 'Not AT / SN / EP: asks on save';
             hint.className = 'pa-name-hint warn';
         }
     }
@@ -442,17 +444,22 @@ let autoChosen = false;
 
 function _setAutoExpBadge(on) {
     isAutoExposure = on;
-    const hintEl = document.getElementById('auto-exp-hint');
-    if (!hintEl) return;
-    hintEl.innerText = on ? '✓ AUTO' : '';
-    hintEl.style.color = on ? '#4ade80' : '';
-    hintEl.style.fontWeight = on ? '600' : '';
+    _renderXpTotal();
 }
 
-// A manual change to the filter rows: the target keeps its own filters
-function _clearAutoExposureState() {
-    if (isAutoExposure) { _setAutoExpBadge(false); _renderAutoPlan(); }
+// After any change to the ticked filters or their frames: still the auto plan only while every ticked row is a
+// u g r i z filter with CASTOR's own frames; the ticked filters are the auto plan's filters (auto_plan)
+function _syncAutoState() {
+    if (!autoResult || !autoResult.filters) { isAutoExposure = false; return; }
+    const picked = AUTO_ALL.filter(f => obsFilters.some(r => r.filter === f));
+    if (picked.length) { autoSel = picked; autoChosen = true; }
+    isAutoExposure = obsFilters.length > 0 && obsFilters.every(r => {
+        const a = autoResult.filters[r.filter];
+        return a && a.exp && a.exp === r.exp && a.count === r.count;
+    });
 }
+// kept for older callers: a manual change re-checks the auto state
+function _clearAutoExposureState() { _syncAutoState(); }
 
 // blank = automatic (S/N 10 for a brightest magnitude of 19 or brighter, else 20; chosen by the server)
 function _autoSnr() {
@@ -524,15 +531,6 @@ function _autoSwitchTel(tel) {
         const p = document.getElementById('obs-program'); if (tel === 'LOT' && p && !p.value) p.focus();
     });
 }
-function _autoPick(f, on) {
-    const set = new Set(autoSel);
-    if (f === 'all') AUTO_ALL.forEach(x => on ? set.add(x) : set.delete(x));
-    else if (on) set.add(f); else set.delete(f);
-    const next = AUTO_ALL.filter(x => set.has(x));
-    if (!next.length) { _renderAutoPlan(); return; }          // at least one filter
-    autoSel = next;
-    if (autoResult && autoChosen) _applyAutoSel(); else _renderAutoPlan();
-}
 // The plan was computed from the latest detection on Kinder: it is the target's Newest Mag
 function _fillLatestMag(res) {
     const l = res && res.latest, el = document.getElementById('obs-mag');
@@ -550,73 +548,59 @@ function _moonLine(res) {
     const lvl = { none: 'none', low: 'low', moderate: 'moderate', high: 'high' }[m.level] || m.level;
     const where = m.moon_alt != null && m.moon_alt < 0 ? 'below the horizon' :
         (m.illum != null ? Math.round(m.illum * 100) + '% lit' : '') + (m.sep != null ? ', ' + Math.round(m.sep) + '° away' : '');
-    return '<div class="pa-auto-moon is-' + escapeHtml(m.level || '') + '"><b>Moon: ' + escapeHtml(lvl) + '</b> <span>' + escapeHtml(where) + '</span>' +
-        (m.dmag >= 0.1 ? '<span>sky +' + m.dmag.toFixed(1) + ' mag/″² in r (' + m.sky.toFixed(1) + ' vs ' + m.dark.toFixed(1) + ' dark) · a sky-limited target needs ×' + m.factor.toFixed(1) + ' the time</span>' : '') +
+    const tip = where + (m.dmag >= 0.1 ? '; sky +' + m.dmag.toFixed(1) + ' mag/″² in r (' + m.sky.toFixed(1) + ' vs ' + m.dark.toFixed(1) + ' dark)' : '');
+    return '<div class="pa-auto-moon is-' + escapeHtml(m.level || '') + '" title="' + escapeHtml(tip) + '"><b>Moon ' + escapeHtml(lvl) + '</b>' +
+        (m.dmag >= 0.1 ? '<span>×' + m.factor.toFixed(1) + ' time if sky-limited</span>' : '') +
         (res.moon_ignored ? '<span class="pa-auto-moon-off">ignored in this plan</span>' : '') + '</div>';
 }
 
+// Where each filter's magnitude came from (CASTOR's answer), in words
+function _autoFrom(f) {
+    const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
+    const src = () => day(f.mjd) + ' · ' + (f.source || '');
+    if (f.from !== 'set' && f.mjd == null) return 'typed';
+    return ({
+        set: () => 'typed' + (f.auto_mag != null ? ' (auto ' + Number(f.auto_mag).toFixed(2) + ')' : ''),
+        own: () => src(),
+        bright: () => 'brightest in 3 days, ' + f.filter + ' ' + src(),
+        own_old: () => src() + ', nothing in 3 days',
+        other: () => f.filter + ' ' + src() + ', nothing in 3 days in this filter',
+    }[f.from] || (() => 'typed'))();
+}
+
+// Under the exposures table: the rig, where the magnitudes came from, the Moon; then the plan buttons
 function _renderAutoPlan() {
     const box = document.getElementById('auto-exp-plan');
+    const slot = document.getElementById('auto-exp-choose');
     if (!box) return;
-    if (!autoPanelOpen && !autoResult) { box.hidden = true; box.innerHTML = ''; document.getElementById('auto-exp-choose')?.replaceChildren(); return; }
+    renderFilterRows();
+    if (!autoPanelOpen && !autoResult) { box.hidden = true; box.innerHTML = ''; if (slot) slot.replaceChildren(); return; }
     const res = autoResult && autoResult.filters ? autoResult : null;
-    const band = sf => sf;           // the script's filter names, as in the filter rows below: up gp rp ip zp
-    const allOn = autoSel.length === AUTO_ALL.length;
-    const cb = (val, label, checked, t) => '<label class="pa-auto-opt"><input type="checkbox" value="' + val + '"' + (checked ? ' checked' : '') +
-        ' onchange="_autoPick(this.value, this.checked)"> ' + escapeHtml(label) + (t ? ' <span class="pa-auto-t">' + escapeHtml(t) + '</span>' : '') + '</label>';
-    let html = '<fieldset class="pa-auto-opts"><legend>Which filters?</legend>' +
-        cb('all', 'All', allOn, '') +
-        AUTO_ALL.map(f => cb(f, band(f), autoSel.includes(f), res && res.filters[f].exp ? _fmtSec(res.filters[f].elapsed) : '')).join('') + '</fieldset>';
+    let html = '';
     if (!res) {
-        html += '<div class="pa-auto-plan-head">Asking CASTOR…</div>';
+        html = '<div class="pa-auto-plan-head">Asking CASTOR…</div>';
+        if (slot) slot.replaceChildren();
     } else {
-        const when = new Date(res.when).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Taipei' });
-        const total = _autoTotal(autoSel), long = total > res.max_total_s;
         const lot = res.telescope === 'LOT';
-        const isoDay = iso => iso ? String(iso).slice(0, 10) : '';
-        const last = res.last || {};
-        html += '<div class="pa-auto-rig"><b>' + escapeHtml(res.telescope + ' · ' + res.camera_name) + '</b>' +
-            (res.camera_auto ? ' <span>(auto: the camera ' + escapeHtml(res.telescope) + ' last used)</span>' : '') +
-            (last.telescope ? '<span>Last ' + escapeHtml(res.telescope) + ' frames: ' + escapeHtml(isoDay(last.telescope.night) + ' · ' + last.telescope.camera) + '</span>' : '') +
-            '<span>This target: ' + (last.target ? escapeHtml(isoDay(last.target.night) + ' · ' + last.target.camera) : 'not observed yet') + '</span></div>';
         html += _moonLine(res);
-        html += '<div class="pa-auto-plan-head">' + (!autoChosen ? 'Picked filters: ' + _fmtSec(total) + ' · '
-            : isAutoExposure ? 'Total ' + _fmtSec(total) + ' at the telescope · ' : 'Not auto: the filters below are your own · ') +
-            'highest ' + Math.round(res.alt) + '° at ' + when + ' (UTC+8) · S/N ' + res.snr +
-            (res.snr_auto ? ' (auto)' : '') + '</div>';
-        const day = mjd => new Date((mjd - 40587) * 864e5).toISOString().slice(0, 10);
-        const src = f => day(f.mjd) + ' \u00b7 ' + (f.source || '');
-        const from = f => f.from !== 'set' && f.mjd == null ? 'typed above' : ({         // a typed magnitude has no date
-            set: () => 'typed here' + (f.auto_mag != null ? ' (auto ' + Number(f.auto_mag).toFixed(2) + ')' : ''),
-            own: () => src(f),
-            bright: () => 'brightest in 3 days: ' + f.filter + ' ' + src(f),
-            own_old: () => src(f) + ' (nothing in 3 days)',
-            other: () => f.filter + ' ' + src(f) + ' (nothing in 3 days or in this filter)',
-        }[f.from] || (() => 'typed above'))();
-        html += '<table class="pa-auto-tbl"><thead><tr><th scope="col">Filter</th><th scope="col">Mag</th><th scope="col">From</th><th scope="col">Frames</th><th scope="col">S/N</th></tr></thead><tbody>' +
-            AUTO_ALL.map(sf => {
-                const f = res.filters[sf];
-                const frames = f.exp ? f.exp + ' s × ' + f.count : (f.status || '—');
-                return '<tr class="' + (autoSel.includes(sf) ? '' : 'is-off') + '"><th scope="row">' + band(sf) + '</th><td class="is-num"><input class="pa-auto-mag" type="number" step="0.01" min="5" max="30" inputmode="decimal" aria-label="' + band(sf) + ' magnitude (blank: automatic)" data-f="' + sf + '" placeholder="' +
-                    (f.from === 'set' ? (f.auto_mag != null ? Number(f.auto_mag).toFixed(2) : '') : f.mag.toFixed(2)) + '" value="' + (autoMags[sf] != null ? autoMags[sf] : '') + '" onchange="_autoMagChange(this)">' +
-                    '</td><td class="pa-auto-from">' + escapeHtml(from(f)) + '</td><td class="is-num">' + escapeHtml(frames) + '</td><td class="is-num">' + (f.snr != null ? f.snr.toFixed(0) : '—') + '</td></tr>';
-            }).join('') + '</tbody></table>';
-        const opts = [[autoSel, 'Keep current: ' + autoSel.map(band).join(' ')], [['gp', 'rp', 'ip'], 'Only gp + rp + ip'], [['gp', 'rp'], 'Only gp + rp'], [['rp'], 'Only rp']]
-            .filter(([l], i) => i === 0 || l.join() !== autoSel.join());
-        const isOn = l => autoChosen && l.join() === autoSel.join();
-        html += '<div class="pa-auto-choose' + (autoChosen ? '' : ' is-needed') + '" role="group" aria-label="Plan">' +
-            '<span class="pa-auto-choose-l">' + (autoChosen ? 'Plan' : 'Pick a plan to fill the filters') + '</span>' +
-            opts.map(([l, label]) => '<button type="button" class="pa-auto-pick' + (isOn(l) ? ' is-on' : '') + (_autoTotal(l) > res.max_total_s ? ' is-long' : '') +
-                '" aria-pressed="' + isOn(l) + '" onclick="_autoUse([' + l.map(x => "'" + x + "'").join(',') + '])">' + escapeHtml(label) +
-                ' <span class="pa-auto-t">' + _fmtSec(_autoTotal(l)) + '</span></button>').join('') +
-            '<button type="button" class="pa-auto-pick is-lot" onclick="_autoSwitchTel(\'' + (lot ? 'SLT' : 'LOT') + '\')">Switch to ' + (lot ? 'SLT' : 'LOT') + '</button></div>';
-        if (long && autoChosen) html += '<p class="pa-auto-warn">' + escapeHtml(autoSel.map(band).join(' ') + ' takes ' + _fmtSec(total) + ', over ' + _fmtSec(res.max_total_s) + '.') + '</p>';
+        const total = _autoTotal(autoSel);
+        if (total > res.max_total_s && autoChosen) html += '<p class="pa-auto-warn">' + escapeHtml(autoSel.join(' + ') + ' takes ' + _fmtSec(total) + ', over ' + _fmtSec(res.max_total_s) + '.') + '</p>';
         if ((res.notes || []).length) html += '<p class="pa-auto-warn">' + escapeHtml(res.notes.join(' ')) + '</p>';
+        // the plans: the ticked filters, then the usual sets; or the other telescope
+        const opts = [autoSel, ['gp', 'rp', 'ip'], ['gp', 'rp'], ['rp']].filter((l, i, all) => all.findIndex(x => x.join() === l.join()) === i);
+        const isOn = l => autoChosen && isAutoExposure && l.join() === autoSel.join();
+        const pick = document.createElement('div');
+        pick.className = 'pa-auto-choose' + (autoChosen ? '' : ' is-needed');
+        pick.setAttribute('role', 'group');
+        pick.setAttribute('aria-label', 'Plans');
+        pick.innerHTML = '<span class="pa-auto-choose-l">Plans</span>' +
+            opts.map(l => '<button type="button" class="pa-auto-pick' + (isOn(l) ? ' is-on' : '') + (_autoTotal(l) > res.max_total_s ? ' is-long' : '') +
+                '" aria-pressed="' + isOn(l) + '" onclick="_autoUse([' + l.map(x => "'" + x + "'").join(',') + '])">' + escapeHtml(l.join(' + ')) +
+                ' <span class="pa-auto-t">' + _fmtSec(_autoTotal(l)) + '</span></button>').join('') +
+            '<button type="button" class="pa-auto-pick is-lot" onclick="_autoSwitchTel(\'' + (lot ? 'SLT' : 'LOT') + '\')">Switch to ' + (lot ? 'SLT' : 'LOT') + '</button>';
+        if (slot) slot.replaceChildren(pick);
     }
     box.innerHTML = html;
-    // the plan pick sits under the exposures it fills (the target window keeps a place for it there)
-    const slot = document.getElementById('auto-exp-choose');
-    if (slot) { slot.replaceChildren(); const pick = box.querySelector('.pa-auto-choose'); if (pick) slot.appendChild(pick); }
     box.hidden = false;
 }
 
@@ -626,7 +610,7 @@ function onAutoSnrChange() {
 
 async function applyAutoExposure() {
     const hintEl = document.getElementById('auto-exp-hint');
-    const say = (t, keep) => { if (hintEl) { hintEl.style.color = ''; hintEl.innerText = t; } if (!keep) setTimeout(() => { if (hintEl && hintEl.innerText === t) hintEl.innerText = ''; }, 5000); };
+    const say = (t, keep) => { if (hintEl) { hintEl.style.color = ''; hintEl.innerText = t; hintEl.title = t; } if (!keep) setTimeout(() => { if (hintEl && hintEl.innerText === t) hintEl.innerText = ''; }, 5000); };
     const body = {
         name: document.getElementById('obs-name').value.trim(),
         ra: document.getElementById('obs-ra').value.trim(),
@@ -654,109 +638,171 @@ async function applyAutoExposure() {
         }
         autoResult = data.result;
         _fillAutoCameras(autoResult.telescope);
-        autoChosen = false;                     // a new answer: pick a plan before the filters fill
-        obsFilters = [];
-        _setAutoExpBadge(false);
-        renderFilterRows();
-        _renderAutoPlan();
+        xpDraft = {}; xpSnr = {};
+        lastAutoKey = _autoKey();
+        autoChosen = true;                      // a new answer fills the table at once; untick or edit from there
+        _applyAutoSel();
     } catch (e) {
         console.error('Auto exposure error:', e);
         say('Network error');
     }
 }
 
-// ===================== Filter Rows =====================
+// ===================== Exposures table =====================
+// One row per filter: u g r i z always, plus any other filter added by hand. A ticked row is observed (obsFilters);
+// an unticked row keeps the frames it would get (CASTOR's, or typed: xpDraft) so ticking it uses them.
+let xpDraft = {};
+const XP_STD = ['up', 'gp', 'rp', 'ip', 'zp'];
+// S/N of frames typed by hand, from CASTOR at the plan's time and camera (/api/auto_exposure/snr): {f: {exp, count, mag, snr}}
+let xpSnr = {}, xpSnrTimer = null;
+const xpSnrWant = new Set();
+function _xpMag(f) {
+    const a = autoResult && autoResult.filters && autoResult.filters[f];
+    return autoMags[f] != null ? autoMags[f] : (a && a.mag != null ? a.mag : null);
+}
+function _xpQueueSnr(f) {
+    if (!autoResult || !autoResult.filters || _xpMag(f) == null) return;
+    xpSnrWant.add(f);
+    clearTimeout(xpSnrTimer);
+    xpSnrTimer = setTimeout(_xpFetchSnr, 250);
+}
+async function _xpFetchSnr() {
+    const res = autoResult;
+    const rows = [...xpSnrWant].map(f => { const v = _xpShown(f); return { filter: f, mag: _xpMag(f), exp: v.exp, count: v.count }; });
+    xpSnrWant.clear();
+    if (!res || !rows.length) return;
+    try {
+        const r = await _apiFetch('/api/auto_exposure/snr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: _apiStringify({
+            ra: document.getElementById('obs-ra').value.trim(), dec: document.getElementById('obs-dec').value.trim(),
+            telescope: res.telescope, camera: res.camera_auto ? '' : res.camera, when: res.when, no_moon: autoNoMoon, rows }) });
+        const d = await r.json();
+        if (!d.success || autoResult !== res) return;
+        rows.forEach(x => { xpSnr[x.filter] = { exp: x.exp, count: x.count, mag: x.mag, snr: d.snr[x.filter] }; });
+        renderFilterRows();
+    } catch (e) { console.error('S/N:', e); }
+}
+function _xpSnrText(f, v, a) {
+    if (a && a.exp && a.exp === v.exp && a.count === v.count && (autoMags[f] == null || a.from === 'set')) return a.snr != null ? a.snr.toFixed(0) : '—';
+    const k = xpSnr[f];
+    if (k && k.exp === v.exp && k.count === v.count && k.mag === _xpMag(f)) return k.snr != null ? k.snr.toFixed(0) : '—';
+    return autoResult && _xpMag(f) != null ? '…' : '—';
+}
+// Auto exposure runs by itself once the target has a name and coordinates (and again when they change), unless the
+// filters are the user's own
+let lastAutoKey = '';
+function _autoKey() {
+    const v = id => (document.getElementById(id) || {}).value || '';
+    return [v('obs-name').trim(), v('obs-ra').trim(), v('obs-dec').trim(), v('obs-telescope')].join('|');
+}
+function _autoMaybe() {
+    const dlg = document.getElementById('targetModal');
+    if (!dlg || dlg.style.display === 'none') return;
+    const key = _autoKey(), [name, ra, dec] = key.split('|');
+    if (!name || !ra || !dec || key === lastAutoKey) return;
+    if (obsFilters.length && !isAutoExposure) return;          // the user's own filters stay
+    if (autoPanelOpen && !autoResult) return;                   // already asking
+    lastAutoKey = key;
+    applyAutoExposure();
+}
+
+function _xpShown(f) {
+    const r = obsFilters.find(x => x.filter === f);
+    if (r) return r;
+    if (xpDraft[f]) return xpDraft[f];
+    const a = autoResult && autoResult.filters && autoResult.filters[f];
+    return a && a.exp ? { exp: a.exp, count: a.count } : { exp: 300, count: 1 };
+}
+function _xpToggle(f, on) {
+    const i = obsFilters.findIndex(x => x.filter === f);
+    if (on && i < 0) { const v = _xpShown(f); obsFilters.push({ filter: f, exp: v.exp, count: v.count }); _xpQueueSnr(f); }
+    if (!on && i >= 0) { xpDraft[f] = { exp: obsFilters[i].exp, count: obsFilters[i].count }; obsFilters.splice(i, 1); }
+    _syncAutoState();
+    _renderAutoPlan();
+}
+// typing frames in a row ticks it
+function _xpSet(f, field, value) {
+    const n = Math.max(field === 'count' ? 1 : 0, parseInt(value, 10) || 0);
+    let r = obsFilters.find(x => x.filter === f);
+    if (!r) { const v = _xpShown(f); r = { filter: f, exp: v.exp, count: v.count }; obsFilters.push(r); }
+    r[field] = n;
+    _syncAutoState();
+    _renderAutoPlan();
+    _xpQueueSnr(f);
+}
+
 function addFilterRow(filterName) {
-    _clearAutoExposureState();
     obsFilters.push({ filter: filterName || '', exp: 300, count: 1 });
-    renderFilterRows();
+    _syncAutoState();
+    _renderAutoPlan();
+    const rows = document.querySelectorAll('#filter-rows-container .pa-xp-name');
+    if (!filterName && rows.length) rows[rows.length - 1].focus();
 }
 
 function addAllFilters(filters) {
-    _clearAutoExposureState();
-    const existing = obsFilters.map(f => f.filter);
-    filters.forEach(f => {
-        if (!existing.includes(f)) {
-            obsFilters.push({ filter: f, exp: 300, count: 1 });
-        }
-    });
-    renderFilterRows();
+    filters.forEach(f => { if (!obsFilters.some(x => x.filter === f)) obsFilters.push({ filter: f, exp: 300, count: 1 }); });
+    _syncAutoState();
+    _renderAutoPlan();
 }
 
 function removeFilterRow(index) {
-    _clearAutoExposureState();
     obsFilters.splice(index, 1);
-    renderFilterRows();
+    _syncAutoState();
+    _renderAutoPlan();
 }
 
 function updateFilterRow(index, field, value) {
-    _clearAutoExposureState();
     obsFilters[index][field] = value;
-    renderFilterRows();
+    _syncAutoState();
+    _renderAutoPlan();
+}
+
+function _renderXpTotal() {
+    const totalText = document.getElementById('total-exposure-text');
+    if (!totalText) return;
+    const sec = obsFilters.reduce((a, r) => a + (r.exp || 0) * (r.count || 0), 0);
+    const tag = isAutoExposure ? 'auto' : (autoResult && !autoChosen ? 'pick filters' : (obsFilters.length ? 'set by hand' : ''));
+    totalText.innerHTML = obsFilters.length
+        ? 'total <b>' + escapeHtml(_fmtSec(sec)) + '</b>' + (tag ? ' · ' + escapeHtml(tag) : '')
+        : escapeHtml(tag || 'no filters yet');
 }
 
 function renderFilterRows() {
     const container = document.getElementById('filter-rows-container');
-    const totalContainer = document.getElementById('total-exposure-container');
-    const totalText = document.getElementById('total-exposure-text');
-
     if (!container) return;
-    // Sort obsFilters into preferred order before rendering
     sortFiltersInPlace(obsFilters);
-    container.innerHTML = '';
-
-    let totalSec = 0;
-    const predefinedFilters = ['up', 'gp', 'rp', 'ip', 'zp'];
-
-    obsFilters.forEach(function(row, idx) {
-        const rowDiv = document.createElement('div');
-        rowDiv.className = 'pa-filter-row';
-
-        const isPredefined = predefinedFilters.includes(row.filter);
-        const dropdownValue = isPredefined ? row.filter : (row.filter ? 'custom' : '');
-        const customDisplay = (!isPredefined && row.filter) ? 'inline-block' : 'none';
-
-        let rowHtml = '<div class="pa-field filter-name" style="position: relative;">' +
-            '<span class="pa-field-label">Filter</span>' +
-            '<select onchange="if(this.value === \'custom\') { this.nextElementSibling.style.display=\'inline-block\'; this.nextElementSibling.focus(); } else { this.nextElementSibling.style.display=\'none\'; updateFilterRow(' + idx + ', \'filter\', this.value); }">' +
-                '<option value="" ' + (!row.filter ? 'selected' : '') + ' disabled>Select...</option>' +
-                '<option value="up" ' + (row.filter === 'up' ? 'selected' : '') + '>up</option>' +
-                '<option value="gp" ' + (row.filter === 'gp' ? 'selected' : '') + '>gp</option>' +
-                '<option value="rp" ' + (row.filter === 'rp' ? 'selected' : '') + '>rp</option>' +
-                '<option value="ip" ' + (row.filter === 'ip' ? 'selected' : '') + '>ip</option>' +
-                '<option value="zp" ' + (row.filter === 'zp' ? 'selected' : '') + '>zp</option>' +
-                '<option value="custom" ' + (dropdownValue === 'custom' ? 'selected' : '') + '>Custom...</option>' +
-            '</select>' +
-            '<input type="text" value="' + escapeHtml(!isPredefined ? row.filter : '') + '" placeholder="Custom Filter" style="display:' + customDisplay + '; margin-top: 5px; width: 100%;" onchange="updateFilterRow(' + idx + ', \'filter\', this.value)">' +
-            '</div>';
-
-        rowHtml += '<div class="pa-field filter-exp">' +
-            '<span class="pa-field-label">Exp (sec)</span>' +
-            '<input type="number" value="' + escapeHtml(row.exp) + '" min="0" onchange="updateFilterRow(' + idx + ', \'exp\', parseInt(this.value)||0)">' +
-            '</div>';
-
-        rowHtml += '<div class="pa-field filter-count">' +
-            '<span class="pa-field-label">Count</span>' +
-            '<input type="number" value="' + escapeHtml(row.count) + '" min="1" onchange="updateFilterRow(' + idx + ', \'count\', parseInt(this.value)||1)">' +
-            '</div>';
-
-        rowHtml += '<div class="pa-filter-subtotal">= ' + (row.exp * row.count) + 's</div>';
-        totalSec += (row.exp * row.count);
-
-        rowHtml += '<button type="button" onclick="removeFilterRow(' + idx + ')" class="pa-btn-remove-filter">' +
-            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>' +
-            '</button>';
-
-        rowDiv.innerHTML = rowHtml;
-        container.appendChild(rowDiv);
+    const res = autoResult && autoResult.filters ? autoResult : null;
+    const num = (v, f, field, label) => '<input type="number" class="pa-xp-n" min="' + (field === 'count' ? 1 : 0) + '" value="' + escapeHtml(v) + '" aria-label="' + escapeHtml(f + ' ' + label) +
+        '" onchange="_xpSet(\'' + escapeHtml(f) + '\', \'' + field + '\', this.value)">';
+    const mins = s => s >= 60 ? Math.round(s / 60) + ' min' : s + ' s';
+    let rows = '';
+    XP_STD.forEach(f => {
+        const on = obsFilters.some(x => x.filter === f);
+        const v = _xpShown(f);
+        const a = res && res.filters[f];
+        const magPh = a ? (a.from === 'set' ? (a.auto_mag != null ? Number(a.auto_mag).toFixed(2) : '') : (a.mag != null ? a.mag.toFixed(2) : '')) : '';
+        rows += '<tr class="' + (on ? 'is-on' : '') + '">' +
+            '<td class="pa-xp-c"><input type="checkbox"' + (on ? ' checked' : '') + ' aria-label="Observe in ' + f + '" onchange="_xpToggle(\'' + f + '\', this.checked)"></td>' +
+            '<th scope="row" class="pa-xp-f">' + f + '</th>' +
+            '<td class="is-num"><input class="pa-auto-mag" type="number" step="0.01" min="5" max="30" inputmode="decimal" data-f="' + f + '" aria-label="' + f + ' magnitude (blank: automatic)"' +
+                (a ? ' title="' + escapeHtml(_autoFrom(a)) + '"' : '') + ' placeholder="' + escapeHtml(magPh) + '" value="' + (autoMags[f] != null ? autoMags[f] : '') + '" onchange="_autoMagChange(this)"></td>' +
+            '<td class="pa-xp-fr">' + num(v.exp, f, 'exp', 'seconds per frame') + '<span>s ×</span>' + num(v.count, f, 'count', 'frames') + '</td>' +
+            '<td class="is-num">' + (a && !a.exp && a.status && !obsFilters.some(x => x.filter === f) ? '<span class="pa-xp-st" title="' + escapeHtml(a.status) + '">—</span>' : _xpSnrText(f, v, a)) + '</td>' +
+            '<td class="is-num">' + mins(v.exp * v.count) + '</td></tr>';
     });
-
-    if (obsFilters.length > 0) {
-        if (totalContainer) totalContainer.style.display = 'inline';
-        if (totalText) totalText.innerText = totalSec + 's (' + (totalSec / 60).toFixed(1) + ' min)';
-    } else {
-        if (totalContainer) totalContainer.style.display = 'none';
-    }
+    // filters typed by hand (not u g r i z): always ticked; untick to remove
+    obsFilters.forEach((r, idx) => {
+        if (XP_STD.includes(r.filter)) return;
+        rows += '<tr class="is-on is-custom">' +
+            '<td class="pa-xp-c"><input type="checkbox" checked aria-label="Remove this filter" onchange="if (!this.checked) removeFilterRow(' + idx + ')"></td>' +
+            '<th scope="row" class="pa-xp-f"><input type="text" class="pa-xp-name" value="' + escapeHtml(r.filter) + '" placeholder="Filter" aria-label="Filter name" onchange="updateFilterRow(' + idx + ', \'filter\', this.value.trim())"></th>' +
+            '<td class="is-num">—</td>' +
+            '<td class="pa-xp-fr"><input type="number" class="pa-xp-n" min="0" value="' + escapeHtml(r.exp) + '" aria-label="Seconds per frame" onchange="updateFilterRow(' + idx + ', \'exp\', parseInt(this.value, 10) || 0)"><span>s ×</span>' +
+                '<input type="number" class="pa-xp-n" min="1" value="' + escapeHtml(r.count) + '" aria-label="Frames" onchange="updateFilterRow(' + idx + ', \'count\', parseInt(this.value, 10) || 1)"></td>' +
+            '<td class="is-num">—</td><td class="is-num">' + mins((r.exp || 0) * (r.count || 0)) + '</td></tr>';
+    });
+    container.innerHTML = '<table class="pa-xp"><thead><tr><th scope="col" aria-label="Observe"></th><th scope="col">Filter</th>' +
+        '<th scope="col" class="is-num">Mag</th><th scope="col">Frames</th><th scope="col" class="is-num">S/N</th><th scope="col" class="is-num">Time</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    _renderXpTotal();
 }
 
 // ===================== Save Target =====================
@@ -809,8 +855,8 @@ async function addObservationTarget(event) {
     }
 
     if (obsFilters.length === 0) {
-        alert(autoResult && !autoChosen ? 'Pick a plan under Auto Exposure first (Keep current, Only gp + rp + ip, …).'
-                                        : 'Please add at least one filter configuration.');
+        alert(autoResult && !autoChosen ? 'Tick the filters to observe, or pick one of the plans under the table.'
+                                        : 'Tick at least one filter under Exposures.');
         return;
     }
 
@@ -1074,10 +1120,12 @@ function moonSepColor(sep) {
 let dtNightInfo = null;
 // the Moon's altitude for the same night (/api/visibility_data moon_alts), kept for the table's mini plots
 var dtMoonTrack = null;
-function drawMiniVisibilitySVG(altitudes, timesLocal, small, moonAlts, moonPhase) {
+// px {w, h}: draw at that size in CSS pixels (the target window), so the labels keep their size instead of scaling
+function drawMiniVisibilitySVG(altitudes, timesLocal, small, moonAlts, moonPhase, px) {
     var N = altitudes ? altitudes.length : 0;
     if (!N || !timesLocal || timesLocal.length !== N) return '';
     var W = small ? 96 : 200, L = small ? 0 : 24, R = small ? 0 : 4, T = small ? 2 : 6, PH = small ? 22 : 56, AX = small ? 2 : 15, H = T + PH + AX;
+    if (px && !small && px.w > 120 && px.h > 80) { W = Math.round(px.w); L = 34; R = 8; T = 10; AX = 20; H = Math.round(px.h); PH = H - T - AX; }
     var PW = W - L - R;
     var t0 = Date.parse(timesLocal[0]), t1 = Date.parse(timesLocal[N - 1]);
     if (!(t1 > t0)) return '';
@@ -1476,8 +1524,8 @@ function openSingleTriggerModal(id) {
         pendingSingleTrigger = true;
         var title = document.getElementById('target-modal-title');
         var label = document.getElementById('target-modal-submit-label');
-        if (title) title.textContent = 'Confirm & Trigger Target';
-        if (label) label.textContent = 'Next: Generate Script';
+        if (title) title.textContent = 'Confirm and trigger';
+        if (label) label.textContent = 'Next: generate script';
     });
 }
 let allTargetsCache = [];
@@ -1531,11 +1579,14 @@ async function editTarget(id) {
     autoResult = t.auto_result && t.auto_result.filters ? t.auto_result : null;
     autoPanelOpen = !!autoResult;
     autoChosen = !!autoResult;                  // a saved target already has its plan in its filters
+    xpDraft = {}; xpSnr = {};
+    const ah = document.getElementById('auto-exp-hint'); if (ah) ah.innerText = '';
     _setAutoExpBadge(wasAuto);
     _renderAutoPlan();
 
     toggleTelescopeUI(t.telescope);
     renderFilterRows();
+    lastAutoKey = _autoKey();                   // opening a saved target does not plan it again (until its coordinates change)
 }
 
 const ALL_TELESCOPES = ['SLT', 'LOT'];

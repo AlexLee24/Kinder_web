@@ -652,6 +652,7 @@
             );
         if (ra && dec) previewVis(t, key);
         if (name) previewLc(t, key);
+        if (typeof window._autoMaybe === 'function') window._autoMaybe();      // Auto exposure fills the table by itself
     }
     async function previewVis(t, key) {
         const say = text => { const b = $('tpVis'); if (b && pvKey === key) b.replaceChildren(el('p', { class: 'pa-tp-empty', text })); };
@@ -668,11 +669,12 @@
             if (!td || !td.altitudes || !td.altitudes.length) { say('Could not compute the visibility (check RA and Dec)'); return; }
             const peak = Math.round(Math.max(...td.altitudes));
             $('tpAstro').replaceChildren(
-                el('span', {}, 'Peak ', el('b', { text: peak + '°', style: `color:${peak >= 30 ? '#7fe0a0' : '#ff9b8f'}` })),
+                el('span', {}, 'Peak ', el('b', { text: peak + '°', style: `color:${peak >= 30 ? '#4cc38a' : '#e5484d'}` })),
                 el('span', {}, 'Transit ', el('b', { text: td.transit_time_local ? td.transit_time_local.slice(11, 16) : '—' })),
                 el('span', {}, 'Moon ', el('b', { text: td.moon_separation != null ? td.moon_separation + '°' : '—' })),
                 d.moon_info && d.moon_info.phase != null ? el('span', {}, 'Phase ', el('b', { text: Math.round(d.moon_info.phase) + '%' })) : null);
-            $('tpVis').innerHTML = typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(td.altitudes, d.times_local, false, d.moon_alts, d.moon_info && d.moon_info.phase) : '';
+            const vb = $('tpVis'), px = vb ? { w: vb.clientWidth, h: vb.clientHeight - 22 } : null;     // 22: the caption under it
+            $('tpVis').innerHTML = typeof drawMiniVisibilitySVG === 'function' ? drawMiniVisibilitySVG(td.altitudes, d.times_local, false, d.moon_alts, d.moon_info && d.moon_info.phase, px) : '';
         } catch (e) { say('Could not compute the visibility'); }
     }
     async function previewLc(t, key) {
@@ -693,12 +695,21 @@
     }
     // the plot fills what is left under the filter bar: no scrolling in the window
     function fitLc(box) {
+        // the window's rows settle after the altitude chart and the filter chips arrive: fit again whenever the box changes
+        if (!box._fitRo && typeof ResizeObserver === 'function') { box._fitRo = new ResizeObserver(() => fitLc(box)); box._fitRo.observe(box); }
         requestAnimationFrame(() => {
             const plot = document.getElementById('phot-plotly-div');
             if (!plot || !box.isConnected) return;
             const extra = box.scrollHeight - plot.offsetHeight;
             const h = Math.max(200, Math.floor(box.clientHeight - extra));
-            if (Math.abs(h - plot.offsetHeight) > 2) Plotly.relayout(plot, { height: h });
+            // a preview: no title (the section has one), no date-axis title over the plot, the window's 11 px labels
+            const lay = { 'title.text': '', 'font.size': 11 };
+            if (plot.layout && plot.layout.xaxis2) lay['xaxis2.title.text'] = '';
+            if (plot.layout && plot.layout.xaxis3) lay['xaxis.title.text'] = '';     // the phase axis under it names the time
+            if (Math.abs(h - plot.offsetHeight) > 2) lay.height = h;
+            const w = Math.floor(box.clientWidth);
+            if (w > 100 && Math.abs(w - plot.offsetWidth) > 2) lay.width = w;
+            if (lay.height || lay.width || !plot._kwFitted) { plot._kwFitted = true; Plotly.relayout(plot, lay); }
         });
     }
     // The light curve's filter: a chip per band (all sources together), limits on/off, and the sources in a small menu.
