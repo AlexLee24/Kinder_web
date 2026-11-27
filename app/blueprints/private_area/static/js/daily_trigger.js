@@ -660,8 +660,9 @@ function _xpMag(f) {
     const a = autoResult && autoResult.filters && autoResult.filters[f];
     return autoMags[f] != null ? autoMags[f] : (a && a.mag != null ? a.mag : null);
 }
+const xpSnrBusy = new Set();
 function _xpQueueSnr(f) {
-    if (!autoResult || !autoResult.filters || _xpMag(f) == null) return;
+    if (!autoResult || !autoResult.filters || _xpMag(f) == null || xpSnrBusy.has(f)) return;
     xpSnrWant.add(f);
     clearTimeout(xpSnrTimer);
     xpSnrTimer = setTimeout(_xpFetchSnr, 250);
@@ -671,15 +672,18 @@ async function _xpFetchSnr() {
     const rows = [...xpSnrWant].map(f => { const v = _xpShown(f); return { filter: f, mag: _xpMag(f), exp: v.exp, count: v.count }; });
     xpSnrWant.clear();
     if (!res || !rows.length) return;
+    rows.forEach(x => xpSnrBusy.add(x.filter));
+    // no answer (an error, the network): '—' for those frames, not '…' forever
+    const done = snr => { rows.forEach(x => { xpSnrBusy.delete(x.filter); xpSnr[x.filter] = { exp: x.exp, count: x.count, mag: x.mag, snr: snr ? snr[x.filter] : null }; }); };
     try {
         const r = await _apiFetch('/api/auto_exposure/snr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: _apiStringify({
             ra: document.getElementById('obs-ra').value.trim(), dec: document.getElementById('obs-dec').value.trim(),
             telescope: res.telescope, camera: res.camera_auto ? '' : res.camera, when: res.when, no_moon: autoNoMoon, rows }) });
-        const d = await r.json();
-        if (!d.success || autoResult !== res) return;
-        rows.forEach(x => { xpSnr[x.filter] = { exp: x.exp, count: x.count, mag: x.mag, snr: d.snr[x.filter] }; });
-        renderFilterRows();
-    } catch (e) { console.error('S/N:', e); }
+        const d = await r.json().catch(() => ({}));
+        if (autoResult !== res) { rows.forEach(x => xpSnrBusy.delete(x.filter)); return; }
+        done(d.success ? d.snr : null);
+    } catch (e) { console.error('S/N:', e); done(null); }
+    renderFilterRows();
 }
 function _xpSnrText(f, v, a) {
     if (a && a.exp && a.exp === v.exp && a.count === v.count && (autoMags[f] == null || a.from === 'set')) return a.snr != null ? a.snr.toFixed(0) : '—';
@@ -800,6 +804,7 @@ function renderFilterRows() {
                 '<input type="number" class="pa-xp-n" min="1" value="' + escapeHtml(r.count) + '" aria-label="Frames" onchange="updateFilterRow(' + idx + ', \'count\', parseInt(this.value, 10) || 1)"></td>' +
             '<td class="is-num">—</td><td class="is-num">' + mins((r.exp || 0) * (r.count || 0)) + '</td></tr>';
     });
+    XP_STD.forEach(f => { if (_xpSnrText(f, _xpShown(f), res && res.filters[f]) === '…') _xpQueueSnr(f); });
     container.innerHTML = '<table class="pa-xp"><thead><tr><th scope="col" aria-label="Observe"></th><th scope="col">Filter</th>' +
         '<th scope="col" class="is-num">Mag</th><th scope="col">Frames</th><th scope="col" class="is-num">S/N</th><th scope="col" class="is-num">Time</th></tr></thead><tbody>' + rows + '</tbody></table>';
     _renderXpTotal();
