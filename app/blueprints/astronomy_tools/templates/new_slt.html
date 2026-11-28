@@ -29,6 +29,7 @@
         </div>
         <div class="kw-page-actions">
             <span class="ns-sync" id="nsSync" data-state="idle">Loading…</span>
+            <a class="kw-btn kw-btn-ghost kw-btn-sm" id="nsGsheet" href="#" target="_blank" rel="noopener" hidden title="The equipment tables are kept in this Google Sheet; edits here and there show up in both">Google Sheets ↗</a>
             <form method="post" action="{{ url_for('astronomy_tools.new_slt_lock') }}">
                 <button type="submit" class="kw-btn kw-btn-ghost kw-btn-sm">Lock</button>
             </form>

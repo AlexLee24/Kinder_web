@@ -10,6 +10,8 @@ Set or change the password (signs everyone out):
 
     python -m app.blueprints.astronomy_tools.new_slt set-password
 
+With app/data/new_slt/gsheet.json the tables live in a Google Sheet instead (new_slt_gsheet.py).
+
 The page edits the sheet with small operations (set a cell, add a row, …, see apply_op) that the server applies to its
 current copy, so two people editing different cells at once do not overwrite each other.
 """
@@ -383,6 +385,10 @@ def _guard():
 
 
 def _state_json(state, **extra):
+    from . import new_slt_gsheet as gs
+    cfg = gs.load_config()
+    if cfg:
+        extra['gsheet'] = gs.public_info(cfg, state)
     return _no_index(jsonify({'rev': state['rev'], 'updated': state.get('updated'),
                               'updated_by': state.get('updated_by'), 'doc': state['doc'], **extra}))
 
@@ -391,10 +397,13 @@ def _state_json(state, **extra):
 def new_slt_sheet():
     """The whole sheet; ?since=<rev> answers {"rev": n, "same": true} when nothing changed."""
     _guard()
-    state = load_sheet()
+    from . import new_slt_gsheet as gs
+    cfg = gs.load_config()
+    state = gs.pull(cfg) if cfg else load_sheet()       # Google Sheets is the master copy when it is set up
     since = request.args.get('since', type=int)
     if since is not None and since == state['rev']:
-        return _no_index(jsonify({'rev': state['rev'], 'same': True}))
+        return _no_index(jsonify({'rev': state['rev'], 'same': True,
+                                  **({'gsheet': gs.public_info(cfg, state)} if cfg else {})}))
     return _state_json(state)
 
 
@@ -407,6 +416,14 @@ def new_slt_ops():
     ops = body.get('ops')
     if not isinstance(ops, list) or not ops or len(ops) > MAX_OPS:
         return _no_index(jsonify({'error': 'No edits.'})), 400
+    from . import new_slt_gsheet as gs
+    cfg = gs.load_config()
+    if cfg:
+        try:
+            state, skipped = gs.apply_ops(ops, cfg, _who())
+        except gs.SyncError as e:
+            return _no_index(jsonify({'error': str(e)})), 502
+        return _state_json(state, skipped=skipped)
     skipped = []
     with _locked():
         state = _read_sheet()
