@@ -98,7 +98,7 @@ def seed_doc():
     configs.append({'id': 'cfg_now', 'name': 'Current SLT', 'telescope': 'telr1', 'camera': 'camr6', 'mount': None,
                     'reducer': 1, 'rotation': 0, 'color': '#FFFFFF', 'extras': []})
     return {'tables': [camera, telescope, mount], 'configs': configs,
-            'fx': {'USD': 1.0, 'EUR': 1.16, 'TWD': 0.0325, 'JPY': 0.0066}}
+            'fx': {'USD': 1.0, 'EUR': 1.096, 'TWD': 0.030349, 'JPY': 0.006270}}   # 2026-11-27: 1 USD = 32.95 TWD, 159.5 JPY
 
 
 # ── storage ──────────────────────────────────────────────────────────────────────────────────────────────────────────
