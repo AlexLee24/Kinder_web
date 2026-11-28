@@ -493,7 +493,11 @@
         }
 
         function init() {
-            const target = lsGet('ns-target', '06 41 00 +09 53 00');   // NGC 2264 / Cone: a field that fills a few degrees
+            // default field: SN 2024ggi in NGC 3621 (TNS 11:18:22.087 −32:50:15.27). New storage key (v2), so a field saved
+            // under the old key does not override this default; a target typed from now on is kept.
+            const saved = lsGet('ns-target-v2', null);
+            const target = saved || '169.592029 -32.837575';
+            $('nsTarget').value = saved || 'SN 2024ggi';
             const sel = $('nsSurvey'); sel.value = survey;
             if (window.KinderHips) KinderHips.markSelect(sel);
             Promise.all([A.init, window.KinderHips ? KinderHips.resolve(survey) : survey]).then(([, s]) => {
@@ -519,8 +523,8 @@
             const go = () => {
                 const q = $('nsTarget').value.trim(); if (!q || !aladin) return;
                 const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*([+-]?\d+(?:\.\d+)?)\s*$/);
-                if (m) { aladin.gotoRaDec(parseFloat(m[1]), parseFloat(m[2])); lsSet('ns-target', m[1] + ' ' + m[2]); schedule(); return; }
-                aladin.gotoObject(q, { success: () => { lsSet('ns-target', q); schedule(); }, error: () => toast('Could not find "' + q + '".') });
+                if (m) { aladin.gotoRaDec(parseFloat(m[1]), parseFloat(m[2])); lsSet('ns-target-v2', m[1] + ' ' + m[2]); schedule(); return; }
+                aladin.gotoObject(q, { success: () => { lsSet('ns-target-v2', q); schedule(); }, error: () => toast('Could not find "' + q + '".') });
             };
             $('nsGo').onclick = go;
             $('nsTarget').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
