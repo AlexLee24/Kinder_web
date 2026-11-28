@@ -191,3 +191,4 @@ select.ns-input { padding-right: 4px; }
     .ns-filter { flex: 1; width: auto; }
     .ns-scroll { margin: 0 -14px; padding: 0 14px; }
 }
+.ns-grid td.ns-ro { color: var(--kw-text-muted); font-style: italic; cursor: not-allowed; }

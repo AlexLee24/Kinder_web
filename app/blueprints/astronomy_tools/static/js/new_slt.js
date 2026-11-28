@@ -4,7 +4,8 @@
 // rows: [{id, cells: {colId: text}}]}], configs: [...], fx: {USD: 1, EUR: …}}. Every edit is a small op (set_cell,
 // add_row, …) applied here at once and sent to the server, which applies it to its own copy; the reply is the
 // server's whole document, onto which the ops still in flight are applied again. Every 15 s the page asks whether
-// someone else changed it.
+// someone else changed it. When the server keeps the tables in Google Sheets (new_slt_gsheet.py) the reply also has
+// gsheet: {url, error, pulled}; rows then carry ro: [colId] for cells that are formulas there (not editable here).
 (function () {
     'use strict';
     const CFG = window.NEW_SLT;
@@ -72,6 +73,7 @@
     function adopt(state) {
         // the server's document + whatever we have not sent yet
         S.doc = state.doc; S.rev = state.rev; S.updated = state.updated; S.by = state.updated_by;
+        if (state.gsheet) S.gsheet = state.gsheet;
         S.pending.forEach((op) => applyOp(S.doc, op));
         if (S.drafts.configs) S.doc.configs = S.drafts.configs;
         if (S.drafts.fx) S.doc.fx = S.drafts.fx;
@@ -90,7 +92,10 @@
                 if (!ok) throw new Error(j.error || ('HTTP ' + status));
                 S.error = null;
                 adopt(j);
-                if (j.skipped && j.skipped.length) toast(j.skipped.length + ' edit(s) no longer applied (someone changed that part).');
+                if (j.skipped && j.skipped.length) {
+                    const why = Array.from(new Set(j.skipped.map((x) => x.reason).filter((x) => x && !/not found$/.test(x))));
+                    toast(j.skipped.length + ' edit(s) not applied' + (why.length ? ': ' + why.join('; ') : ' (someone changed that part).'));
+                }
                 emit();
                 if (S.pending.length) flush(); else setSync('saved');
             })
@@ -108,7 +113,8 @@
         fetch(CFG.sheet + '?since=' + S.rev, { credentials: 'same-origin' })
             .then((r) => { if (r.status === 403) location.reload(); return r.json(); })
             .then((j) => {
-                if (j.same || S.inflight || S.pending.length || Sheet.isEditing()) return;
+                if (j.same) { if (j.gsheet) { S.gsheet = j.gsheet; setSync('saved'); } return; }
+                if (S.inflight || S.pending.length || Sheet.isEditing()) return;
                 adopt(j); emit(); setSync('saved');
             }).catch(() => {});
     }
@@ -123,6 +129,12 @@
             let when = '';
             if (S.updated) { const d = new Date(S.updated.replace(/([+-]\d\d)(\d\d)$/, '$1:$2')); if (!isNaN(d)) when = d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
             el.textContent = S.updated ? ('Saved · ' + when + (S.by ? ' · ' + S.by : '')) : 'Saved';
+            if (S.gsheet && S.gsheet.error) { el.dataset.state = 'error'; el.textContent = 'Google Sheets not reachable, showing the last copy (' + S.gsheet.error + ')'; }
+        }
+        const g = $('nsGsheet');
+        if (g) {
+            g.hidden = !(S.gsheet && S.gsheet.url);
+            if (S.gsheet && S.gsheet.url) g.href = S.gsheet.url;
         }
     }
     window.addEventListener('beforeunload', (e) => { if (S.pending.length || S.inflight) { e.preventDefault(); e.returnValue = ''; } });
@@ -143,14 +155,17 @@
         return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
     }
     // a price is read one way only: the amount, then EUR, USD, TWD or JPY ("73000 USD", "~180,000 USD (TBC)", ">19,000 EUR").
-    // No code → nocur: shown with a reminder and left out of the totals (never assumed USD).
+    // A column whose header names the currency ("廠商報價 USD") takes plain numbers in it. No code anywhere → nocur:
+    // shown with a reminder and left out of the totals (never assumed USD).
     const CODE = /(?:^|[^A-Za-z])(EUR|USD|TWD|JPY)(?![A-Za-z])/i;
-    function parsePrice(s) {
+    const headCur = (name) => { const m = String(name || '').match(CODE); return m ? m[1].toUpperCase() : null; };
+    function parsePrice(s, colName) {
         s = String(s || '');
         const m = s.replace(/(\d),(?=\d{3}\b)/g, '$1').match(/\d+(?:\.\d+)?/);
         if (!m) return null;
         const code = s.match(CODE);
-        return { amount: parseFloat(m[0]), currency: code ? code[1].toUpperCase() : null, nocur: !code,
+        const cur = code ? code[1].toUpperCase() : headCur(colName);
+        return { amount: parseFloat(m[0]), currency: cur, nocur: !cur,
                  approx: /[~≈>＞<]|–|—|-\s*\d|待|約|起/.test(s), text: s };
     }
 
@@ -162,11 +177,14 @@
     }
     function rowName(t, r) { const c = t.columns[0]; return (c && r.cells[c.id]) || '(unnamed)'; }
     function cell(t, r, re) { const c = colMatch(t, re); return c ? (r.cells[c.id] || '') : ''; }
-    function rowPrice(t, r) {
-        const quote = parsePrice(cell(t, r, /廠商報價|quote|報價/i));
-        if (quote) return Object.assign(quote, { source: 'quote' });
-        const list = parsePrice(cell(t, r, /^(價格|price|cost|定價|list)/i));
-        return list ? Object.assign(list, { source: 'list' }) : null;
+    function rowPrice(t, r) {      // the first quote column with a number, else the first list-price column with one
+        for (const [re, source] of [[/廠商報價|quote|報價/i, 'quote'], [/^(價格|price|cost|定價|list)/i, 'list']]) {
+            for (const c of t.columns.filter((x) => re.test(x.name || ''))) {
+                const p = parsePrice(r.cells[c.id], c.name);
+                if (p) return Object.assign(p, { source });
+            }
+        }
+        return null;
     }
     const toUSD = (p) => (p && p.currency ? p.amount * (S.doc.fx[p.currency] || 0) : 0);
     const usdToTWD = (v) => (S.doc.fx.TWD ? v / S.doc.fx.TWD : 0);
@@ -612,7 +630,7 @@
         // price columns (價格 / 廠商報價 / price / quote): the cell text plus its value in TWD, read the same way as Compare
         const PRICE_COL = /廠商報價|quote|報價|^(價格|price|cost|定價|list)/i;
         function priceHint(c, text) {
-            const p = text && PRICE_COL.test(c.name || '') ? parsePrice(text) : null;
+            const p = text && PRICE_COL.test(c.name || '') ? parsePrice(text, c.name) : null;
             if (p && p.nocur) return ' title="' + esc(text + ' — no currency: write EUR, USD, TWD or JPY after the amount, e.g. 73000 USD') + '"><span class="ns-pc"><span class="ns-pv">' +
                 esc(text) + '</span><span class="ns-twd ns-warn-t">+ EUR / USD / TWD / JPY</span></span>';
             const twd = p && S.doc.fx.TWD && S.doc.fx[p.currency] ? (p.currency === 'TWD' ? p.amount : usdToTWD(toUSD(p))) : 0;
@@ -635,10 +653,10 @@
             const total = 44 + t.columns.reduce((s, c) => s + colW(c), 0) + 44;
             g.style.width = total + 'px';
             g.innerHTML = '<colgroup><col style="width:44px">' + t.columns.map((c) => '<col style="width:' + colW(c) + 'px">').join('') + '<col style="width:44px"></colgroup>' +
-                '<thead><tr><th class="ns-corner"></th>' + t.columns.map((c, ci) => '<th data-c="' + ci + '"' + (PRICE_COL.test(c.name || '') ? ' title="Write the amount, then EUR, USD, TWD or JPY (e.g. 73000 USD)"' : '') + '><span class="ns-hname">' + esc(c.name || ' ') + (PRICE_COL.test(c.name || '') ? '<small class="ns-hcur">EUR · USD · TWD · JPY</small>' : '') + '</span><button type="button" class="ns-hmenu" data-c="' + ci + '" aria-label="Column options">▾</button><span class="ns-resize" data-c="' + ci + '"></span></th>').join('') +
+                '<thead><tr><th class="ns-corner"></th>' + t.columns.map((c, ci) => '<th data-c="' + ci + '"' + (PRICE_COL.test(c.name || '') ? ' title="' + (headCur(c.name) ? 'A plain number here is read as ' + headCur(c.name) : 'Write the amount, then EUR, USD, TWD or JPY (e.g. 73000 USD)') + '"' : '') + '><span class="ns-hname">' + esc(c.name || ' ') + (PRICE_COL.test(c.name || '') && !headCur(c.name) ? '<small class="ns-hcur">EUR · USD · TWD · JPY</small>' : '') + '</span><button type="button" class="ns-hmenu" data-c="' + ci + '" aria-label="Column options">▾</button><span class="ns-resize" data-c="' + ci + '"></span></th>').join('') +
                 '<th class="ns-addcol"><button type="button" id="nsAddCol" title="Add a column">+</button></th></tr></thead><tbody>' +
                 rows.map((r, ri) => '<tr><th class="ns-rn" data-r="' + ri + '">' + (t.rows.indexOf(r) + 1) + '</th>' +
-                    t.columns.map((c, ci) => '<td data-r="' + ri + '" data-c="' + ci + '"' + priceHint(c, r.cells[c.id]) + '</td>').join('') + '<td class="ns-pad"></td></tr>').join('') +
+                    t.columns.map((c, ci) => '<td data-r="' + ri + '" data-c="' + ci + '"' + (r.ro && r.ro.includes(c.id) ? ' class="ns-ro"' : '') + priceHint(c, r.cells[c.id]) + '</td>').join('') + '<td class="ns-pad"></td></tr>').join('') +
                 (rows.length ? '' : '<tr><td></td><td colspan="' + t.columns.length + '" class="ns-dim">' + (filter ? 'No row matches the filter.' : 'Empty sheet — add a row.') + '</td></tr>') +
                 '</tbody>';
             if (sel) clampSel(t, rows);
@@ -719,6 +737,7 @@
             if (!sel || editing) return;
             const t = table(), row = shownRows(t)[sel.r1], col = t.columns[sel.c1];
             if (!row || !col) return;
+            if (row.ro && row.ro.includes(col.id)) { toast('That cell is a formula in Google Sheets. Change it there.'); return; }
             editing = true;              // before paintSel, which would otherwise reset the textarea
             sel.r0 = sel.r1; sel.c0 = sel.c1; paintSel(false);
             editOrig = row.cells[col.id] || '';
