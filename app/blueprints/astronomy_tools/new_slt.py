@@ -47,7 +47,7 @@ OPS_BURST, OPS_WINDOW_S = 240, 60             # edit requests per IP
 MAX_TABLES, MAX_COLS, MAX_ROWS = 30, 60, 2000
 MAX_CELL, MAX_NAME, MAX_OPS, MAX_CONFIGS = 4000, 120, 500, 80
 MAX_DOC_BYTES = 3 * 1024 * 1024
-KINDS = ('camera', 'telescope', 'mount', 'other')
+KINDS = ('camera', 'telescope', 'mount', 'accessory', 'other')
 _ID = re.compile(r'^[A-Za-z0-9_-]{1,40}$')
 _COLOR = re.compile(r'^#[0-9A-Fa-f]{6}$')
 
@@ -221,11 +221,15 @@ def _clean_config(c):
             extras.append({'label': _text(e.get('label'), MAX_NAME), 'amount': num(e.get('amount'), 0, 1e10, 0),
                            'currency': _text(e.get('currency'), 8) or 'USD',
                            'qty': num(e.get('qty'), 0, 1000, 1)})
-    color = c.get('color') if isinstance(c.get('color'), str) and _COLOR.match(c.get('color')) else '#F39F5A'
     ref = lambda k: c.get(k) if isinstance(c.get(k), str) and _ID.match(c.get(k)) else None  # noqa: E731
+    accessories = []                       # rows of an accessory table, priced from the sheet
+    for a in (c.get('accessories') or [])[:30]:
+        if isinstance(a, dict) and isinstance(a.get('row'), str) and _ID.match(a['row']):
+            accessories.append({'row': a['row'], 'qty': num(a.get('qty'), 0, 1000, 1)})
+    color = c.get('color') if isinstance(c.get('color'), str) and _COLOR.match(c.get('color')) else '#F39F5A'
     return {'id': _id(c.get('id')), 'name': _text(c.get('name'), MAX_NAME), 'telescope': ref('telescope'),
             'camera': ref('camera'), 'mount': ref('mount'), 'reducer': num(c.get('reducer'), 0.1, 5, 1),
-            'rotation': num(c.get('rotation'), -360, 360, 0), 'color': color, 'extras': extras,
+            'rotation': num(c.get('rotation'), -360, 360, 0), 'color': color, 'extras': extras, 'accessories': accessories,
             'qty': num(c.get('qty'), 1, 100, 1),
             'pixels': _text(c.get('pixels'), 40), 'pixel_um': _text(c.get('pixel_um'), 20),
             'focal_mm': _text(c.get('focal_mm'), 20)}

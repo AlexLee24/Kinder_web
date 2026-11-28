@@ -192,3 +192,6 @@ select.ns-input { padding-right: 4px; }
     .ns-scroll { margin: 0 -14px; padding: 0 14px; }
 }
 .ns-grid td.ns-ro { color: var(--kw-text-muted); font-style: italic; cursor: not-allowed; }
+.ns-grid td.ns-calc { color: var(--kw-text-secondary); font-style: italic; }
+.ns-extra.ns-acc { grid-template-columns: 1fr 46px 84px 24px; align-items: center; }
+.ns-acc .ns-num { text-align: right; font-variant-numeric: tabular-nums; }

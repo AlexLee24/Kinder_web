@@ -7,7 +7,9 @@
 // Kinder POSTs JSON {secret, action: "read" | "apply", ops: [...]} and gets back {ok, results, tabs, final}.
 // Every tab whose name does not start with "_" is one table; row 1 is the header. Rows are found by the text in
 // their first column (checked against the row number Kinder last saw), columns by their header, so sorting or
-// inserting rows here does not confuse Kinder. Cells holding a formula are never overwritten.
+// inserting rows here does not confuse Kinder. Cells holding a formula are never overwritten, except the automatic
+// USD → TWD one: a column "<name> TWD" next to "<name> USD" gets =IF(ISNUMBER(G5),G5*GOOGLEFINANCE(…),"") in every
+// row; typing a TWD quote over it keeps the typed amount, clearing the cell brings the conversion back.
 
 const SECRET = 'PASTE-THE-SECRET-HERE';
 
@@ -96,13 +98,57 @@ function colAt_(t, loc) {
   throw new Error('column "' + (name || '(no name)') + '" moved or was deleted in Google Sheets');
 }
 
-// A plain number is stored as a number (so formulas such as =G9*GOOGLEFINANCE(...) keep working); anything else as
+const AUTO_TWD = /GOOGLEFINANCE\("CURRENCY:USDTWD"\)/i;
+
+// [{usd, twd}] column numbers: "<name> TWD" with a "<name> USD" header in the same tab
+function twdPairs_(sh) {
+  const head = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues()[0].map(norm_);
+  const out = [];
+  head.forEach((h, j) => {
+    const m = h.match(/^(.*?)\s*TWD$/i);
+    if (!m) return;
+    const u = head.indexOf((m[1] + ' USD').trim());
+    if (u >= 0) out.push({ usd: u + 1, twd: j + 1 });
+  });
+  return out;
+}
+
+function twdFormula_(sh, row, usd) {
+  const a1 = sh.getRange(row, usd).getA1Notation();
+  return '=IF(ISNUMBER(' + a1 + '),' + a1 + '*GOOGLEFINANCE("CURRENCY:USDTWD"),"")';
+}
+
+// the automatic conversion in this row's TWD cells, unless someone typed a TWD amount there
+function fillTwd_(sh, row) {
+  twdPairs_(sh).forEach((p) => {
+    const cell = sh.getRange(row, p.twd);
+    const f = cell.getFormula();
+    if ((f && AUTO_TWD.test(f)) || (!f && norm_(cell.getDisplayValue()) === '')) {
+      const want = twdFormula_(sh, row, p.usd);
+      if (f !== want) cell.setFormula(want);
+      cell.setNumberFormat('#,##0');
+    }
+  });
+}
+
+function fillTwdAll_(sh) {
+  if (!twdPairs_(sh).length) return;
+  const last = sh.getLastRow();
+  if (last < 2) return;
+  const vals = sh.getRange(2, 1, last - 1, Math.max(sh.getLastColumn(), 1)).getDisplayValues();
+  vals.forEach((r, k) => { if (r.some((v) => norm_(v) !== '')) fillTwd_(sh, k + 2); });
+}
+
+// A plain number is stored as a number (so formulas such as the TWD conversion keep working); anything else as
 // text, exactly as typed (the leading ' stops Sheets turning "1/2" into a date or "=..." into a formula).
 function put_(range, value) {
-  if (range.getFormula()) throw new Error('that cell is a formula in Google Sheets');
+  const f = range.getFormula();
+  if (f && !AUTO_TWD.test(f)) throw new Error('that cell is a formula in Google Sheets');
   const v = String(value == null ? '' : value);
-  if (v === '') range.clearContent();
-  else if (/^-?\d+(\.\d+)?$/.test(v)) range.setValue(Number(v));
+  if (v === '') {
+    range.clearContent();
+    if (f) fillTwd_(range.getSheet(), range.getRow());      // cleared a typed-over conversion: convert again
+  } else if (/^-?\d+(\.\d+)?$/.test(v)) range.setValue(Number(v));
   else range.setValue("'" + v);
 }
 
@@ -120,20 +166,27 @@ function applyOne_(ss, st, op) {
       sh.getRange(1, 1, 1, head.length).setValues([head.map((h) => "'" + h)]).setFontWeight('bold');
       sh.setFrozenRows(1);
       body.forEach((r, k) => r.forEach((v, j) => { if (v !== '' && v != null) put_(sh.getRange(k + 2, j + 1), v); }));
+      fillTwdAll_(sh);
     }
     return { sheetId: sh.getSheetId() };
   }
   const t = tab_(ss, st, op.sheet);
   const sh = t.sh;
   switch (op.op) {
-    case 'set':
-      put_(sh.getRange(rowAt_(t, op.row), colAt_(t, op.col)), op.value);
+    case 'set': {
+      const r = rowAt_(t, op.row), c = colAt_(t, op.col);
+      const range = sh.getRange(r, c);
+      const typedOver = range.getFormula();
+      put_(range, op.value);
+      if (!(typedOver && String(op.value || '') === '')) fillTwd_(sh, r);   // first value in a new row: convert
       return {};
+    }
     case 'insert_row': {
       const after = op.after ? rowAt_(t, op.after) : 1;      // no row before it: first under the header
       sh.insertRowAfter(after);
       t.rows.splice(after, 0, 'n:' + op.id);
       putCells_(t, after + 1, op.cells);
+      fillTwd_(sh, after + 1);
       return { n: after + 1 };
     }
     case 'delete_row': {
@@ -157,11 +210,13 @@ function applyOne_(ss, st, op) {
       if (after === 0) sh.insertColumnBefore(1); else sh.insertColumnAfter(after);
       t.cols.splice(after, 0, 'n:' + op.id);
       sh.getRange(1, after + 1).setValue("'" + (op.name || '')).setFontWeight('bold');
+      fillTwdAll_(sh);
       return { i: after + 1 };
     }
     case 'rename_col': {
       const c = colAt_(t, op.col);
       sh.getRange(1, c).setValue("'" + (op.name || ''));
+      fillTwdAll_(sh);
       return {};
     }
     case 'delete_col': {
@@ -181,6 +236,9 @@ function applyOne_(ss, st, op) {
     }
     case 'rename_tab':
       sh.setName(op.name);
+      return {};
+    case 'fill_twd':
+      fillTwdAll_(sh);
       return {};
     case 'move_tab':
       ss.setActiveSheet(sh);

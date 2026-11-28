@@ -17,6 +17,7 @@ Deleting a whole tab is only done in Google Sheets.
 import copy
 import json
 import logging
+import re
 import secrets
 import time
 
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 PULL_EVERY_S = 10          # the page polls every 15 s: each poll may read Google once
 TIMEOUT_S = 45
 LOCAL_OPS = ('set_configs', 'set_fx', 'resize_col')
+AUTO_TWD = re.compile(r'GOOGLEFINANCE\("CURRENCY:USDTWD"\)', re.I)   # the script's own USD → TWD formula: editable
 
 
 class SyncError(Exception):
@@ -114,7 +116,7 @@ def _match(new, old, prefix, taken):
 def _guess_kind(name):
     n = name.lower()
     for kind, words in (('camera', ('camera', 'sensor', '相機')), ('telescope', ('telescope', 'ota', '望遠鏡')),
-                        ('mount', ('mount', '赤道儀', '腳架'))):
+                        ('mount', ('mount', '赤道儀', '腳架')), ('accessory', ('accessor', '配件'))):
         if any(w in n for w in words):
             return kind
     return 'other'
@@ -152,16 +154,18 @@ def _table_from_tab(tab, prev, tid, taken):
     rows = []
     for rid, (n, r) in zip(rids, raw):
         f = formulas[n - 1] if n - 1 < len(formulas) else []
-        cells, ro = {}, []
+        cells, ro, calc = {}, [], []
         for c, j in zip(columns, keep):
             v = _s(r[j]) if j < len(r) else ''
             if v:
                 cells[c['id']] = v
             if j < len(f) and _s(f[j]):
-                ro.append(c['id'])
+                (calc if AUTO_TWD.search(_s(f[j])) else ro).append(c['id'])
         row = {'id': rid, 'cells': cells, 'n': n}
         if ro:
             row['ro'] = ro
+        if calc:
+            row['calc'] = calc
         rows.append(row)
     kind = prev['kind'] if prev else _guess_kind(tab['name'])
     return {'id': tid, 'label': tab['name'], 'kind': kind, 'columns': columns, 'rows': rows, 'gs_sheet': tab['sheetId']}

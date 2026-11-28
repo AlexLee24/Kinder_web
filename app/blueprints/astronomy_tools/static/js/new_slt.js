@@ -162,7 +162,7 @@
     function parsePrice(s, colName) {
         s = String(s || '');
         const m = s.replace(/(\d),(?=\d{3}\b)/g, '$1').match(/\d+(?:\.\d+)?/);
-        if (!m) return null;
+        if (!m || !parseFloat(m[0])) return null;      // 0 (an empty automatic TWD cell, a placeholder) is no price
         const code = s.match(CODE);
         const cur = code ? code[1].toUpperCase() : headCur(colName);
         return { amount: parseFloat(m[0]), currency: cur, nocur: !cur,
@@ -218,12 +218,23 @@
         out.prices = { tel: tel && rowPrice(tel.t, tel.r), cam: cam && rowPrice(cam.t, cam.r), mnt: mnt && rowPrice(mnt.t, mnt.r) };
         const extrasUSD = (cfg.extras || []).reduce((s, e) => s + (e.amount || 0) * (e.qty == null ? 1 : e.qty) * (S.doc.fx[e.currency] || 0), 0);
         out.extrasUSD = extrasUSD;
+        // accessories picked from an Accessories sheet: priced like the telescope / camera / mount rows
+        out.acc = (cfg.accessories || []).map((a) => {
+            const hit = rowLookup('accessory', a.row);
+            const p = hit && rowPrice(hit.t, hit.r);
+            const q = a.qty == null ? 1 : a.qty;
+            return { name: hit ? rowName(hit.t, hit.r) : '(deleted)', qty: q, p, usd: q * toUSD(p) };
+        });
+        out.accUSD = out.acc.reduce((s, a) => s + a.usd, 0);
+        out.otherUSD = out.accUSD + extrasUSD;
         const qty = cfg.qty || 1;
-        out.totalUSD = qty * (toUSD(out.prices.tel) + toUSD(out.prices.cam) + toUSD(out.prices.mnt) + extrasUSD);
+        out.totalUSD = qty * (toUSD(out.prices.tel) + toUSD(out.prices.cam) + toUSD(out.prices.mnt) + out.otherUSD);
         const picked = ['tel', 'cam', 'mnt'].filter((k) => (k === 'mnt' ? cfg.mount : (k === 'tel' ? cfg.telescope : cfg.camera)));
         out.missing = picked.filter((k) => !out.prices[k]);
         out.nocur = picked.filter((k) => out.prices[k] && out.prices[k].nocur);
-        out.approx = ['tel', 'cam', 'mnt'].some((k) => out.prices[k] && out.prices[k].approx);
+        out.approx = ['tel', 'cam', 'mnt'].some((k) => out.prices[k] && out.prices[k].approx) || out.acc.some((a) => a.p && a.p.approx);
+        out.accMissing = out.acc.filter((a) => a.qty && !a.p).map((a) => a.name);
+        out.accNocur = out.acc.filter((a) => a.qty && a.p && a.p.nocur).map((a) => a.name);
         if (focal && px && um) {
             const f = focal * (cfg.reducer || 1);
             out.fEff = f;
@@ -314,7 +325,14 @@
             '<label>Pixel size (µm)<input class="ns-input" data-k="pixel_um" placeholder="' + esc(x.cam ? (cameraSpecs(x.cam.t, x.cam.r).um || '') : '') + '" value="' + esc(c.pixel_um || '') + '"></label>' +
             '<label class="ns-wide">Pixels (W×H)<input class="ns-input" data-k="pixels" placeholder="' + esc(x.cam && cameraSpecs(x.cam.t, x.cam.r).px ? cameraSpecs(x.cam.t, x.cam.r).px.join('×') : '') + '" value="' + esc(c.pixels || '') + '"></label>' +
             '</div></details>' +
-            '<div class="ns-extras"><div class="ns-extras-head"><span>Other costs (filters, focuser, dome, shipping…)</span><button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-act="add-extra">+ Line</button></div>' +
+            '<div class="ns-extras"><div class="ns-extras-head"><span>Accessories (from the Accessories sheet)</span><button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-act="add-acc"' + (tablesOf('accessory').some((t) => t.rows.length) ? '' : ' disabled title="Add items to an Accessories sheet first"') + '>+ Accessory</button></div>' +
+            (c.accessories || []).map((a, i) => '<div class="ns-extra ns-acc" data-i="' + i + '">' +
+                '<select class="ns-input" data-a="row">' + optionList('accessory', a.row, false) + '</select>' +
+                '<input class="ns-input ns-num" type="number" min="0" step="1" data-a="qty" title="Quantity" value="' + esc(a.qty == null ? 1 : a.qty) + '">' +
+                '<span class="ns-dim ns-num">' + ((x.acc[i] && x.acc[i].usd) ? fmtMoney(x.acc[i].usd, 'USD') : '—') + '</span>' +
+                '<button type="button" class="ns-x" data-act="del-acc" aria-label="Remove">×</button></div>').join('') +
+            '</div>' +
+            '<div class="ns-extras"><div class="ns-extras-head"><span>Other costs (dome, shipping…)</span><button type="button" class="kw-btn kw-btn-sm kw-btn-ghost" data-act="add-extra">+ Line</button></div>' +
             (c.extras || []).map((e, i) => '<div class="ns-extra" data-i="' + i + '">' +
                 '<input class="ns-input" data-e="label" placeholder="Item" value="' + esc(e.label) + '">' +
                 '<input class="ns-input ns-num" type="number" min="0" step="1" data-e="qty" title="Quantity" value="' + esc(e.qty == null ? 1 : e.qty) + '">' +
@@ -378,6 +396,10 @@
             } else if (t.dataset.e) {
                 const i = +t.closest('.ns-extra').dataset.i, k = t.dataset.e;
                 updateCfg(id, (c) => { c.extras[i][k] = (k === 'amount' || k === 'qty') ? (parseFloat(t.value) || 0) : t.value; }, now);
+            } else if (t.dataset.a) {
+                const i = +t.closest('.ns-extra').dataset.i, k = t.dataset.a;
+                updateCfg(id, (c) => { c.accessories[i][k] = k === 'qty' ? (parseFloat(t.value) || 0) : t.value; }, now);
+                if (k === 'row') { box.dataset.id = ''; renderCfgEditor(); }
             }
         };
         box.addEventListener('input', (e) => onField(e, false));
@@ -400,6 +422,15 @@
                 const used = new Set(configs().map((k) => k.color)); c.color = COLORS.find((k) => !used.has(k)) || c.color;
                 visible.add(c.id); saveVisible(); editingCfg = c.id;
                 setConfigs(configs().concat([c]), true);
+            } else if (a === 'add-acc') {
+                const first = tablesOf('accessory').map((t) => t.rows[0]).find(Boolean);
+                if (!first) return;
+                updateCfg(id, (c) => { (c.accessories = c.accessories || []).push({ row: first.id, qty: 1 }); }, true);
+                box.dataset.id = ''; renderCfgEditor();
+            } else if (a === 'del-acc') {
+                const i = +act.closest('.ns-extra').dataset.i;
+                updateCfg(id, (c) => { c.accessories.splice(i, 1); }, true);
+                box.dataset.id = ''; renderCfgEditor();
             } else if (a === 'add-extra') {
                 updateCfg(id, (c) => { (c.extras = c.extras || []).push({ label: '', qty: 1, amount: 0, currency: 'USD' }); }, true);
                 box.dataset.id = ''; renderCfgEditor();
@@ -448,8 +479,8 @@
                         '<td class="ns-num' + (x.etendue && x.etendue === maxEt ? ' is-best' : '') + '">' + (x.etendue ? x.etendue.toFixed(3) + '<small>m²·deg²</small>' : '—') + '</td>'
                     ) : '<td colspan="6" class="ns-dim">Missing ' + [!x.focal && 'focal length', !x.px && 'pixel count', !x.um && 'pixel size'].filter(Boolean).join(', ') + ' — add it to the sheet or override it in the setup.</td>') +
                     priceCell(x.prices.tel) + priceCell(x.prices.cam) + priceCell(x.prices.mnt) +
-                    '<td class="ns-num">' + (x.extrasUSD ? fmtMoney(x.extrasUSD, 'USD') + (S.doc.fx.TWD ? '<small class="ns-twd">' + fmtMoney(usdToTWD(x.extrasUSD), 'TWD') + '</small>' : '') : '—') + '</td>' +
-                    '<td class="ns-num ns-total">' + (x.approx ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(x.totalUSD, 'USD') + [['no price', x.missing], ['no currency', x.nocur]].map(([lab, ks]) => (ks.length ? '<small class="ns-warn-t">' + lab + ': ' + ks.map((k) => ({ tel: 'telescope', cam: 'camera', mnt: 'mount' }[k])).join(', ') + '</small>' : '')).join('') + '</td>' +
+                    '<td class="ns-num" title="' + esc(x.acc.map((a) => (a.qty !== 1 ? a.qty + '× ' : '') + a.name + ' ' + (a.usd ? fmtMoney(a.usd, 'USD') : '—')).concat((c.extras || []).filter((e) => e.label || e.amount).map((e) => e.label || 'other')).join('\n')) + '">' + (x.otherUSD ? fmtMoney(x.otherUSD, 'USD') + (S.doc.fx.TWD ? '<small class="ns-twd">' + fmtMoney(usdToTWD(x.otherUSD), 'TWD') + '</small>' : '') : '—') + (x.acc.length ? '<small>' + x.acc.length + ' accessor' + (x.acc.length > 1 ? 'ies' : 'y') + '</small>' : '') + '</td>' +
+                    '<td class="ns-num ns-total">' + (x.approx ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(x.totalUSD, 'USD') + [['no price', x.missing.map((k) => ({ tel: 'telescope', cam: 'camera', mnt: 'mount' }[k])).concat(x.accMissing)], ['no currency', x.nocur.map((k) => ({ tel: 'telescope', cam: 'camera', mnt: 'mount' }[k])).concat(x.accNocur)]].map(([lab, ks]) => (ks.length ? '<small class="ns-warn-t">' + lab + ': ' + esc(ks.join(', ')) + '</small>' : '')).join('') + '</td>' +
                     (twd ? '<td class="ns-num ns-total">' + (x.approx ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(x.totalUSD * twd, 'TWD') + '</td>' : '') +
                     '</tr>';
             }).join('') + '</tbody>';
@@ -656,7 +687,7 @@
                 '<thead><tr><th class="ns-corner"></th>' + t.columns.map((c, ci) => '<th data-c="' + ci + '"' + (PRICE_COL.test(c.name || '') ? ' title="' + (headCur(c.name) ? 'A plain number here is read as ' + headCur(c.name) : 'Write the amount, then EUR, USD, TWD or JPY (e.g. 73000 USD)') + '"' : '') + '><span class="ns-hname">' + esc(c.name || ' ') + (PRICE_COL.test(c.name || '') && !headCur(c.name) ? '<small class="ns-hcur">EUR · USD · TWD · JPY</small>' : '') + '</span><button type="button" class="ns-hmenu" data-c="' + ci + '" aria-label="Column options">▾</button><span class="ns-resize" data-c="' + ci + '"></span></th>').join('') +
                 '<th class="ns-addcol"><button type="button" id="nsAddCol" title="Add a column">+</button></th></tr></thead><tbody>' +
                 rows.map((r, ri) => '<tr><th class="ns-rn" data-r="' + ri + '">' + (t.rows.indexOf(r) + 1) + '</th>' +
-                    t.columns.map((c, ci) => '<td data-r="' + ri + '" data-c="' + ci + '"' + (r.ro && r.ro.includes(c.id) ? ' class="ns-ro"' : '') + priceHint(c, r.cells[c.id]) + '</td>').join('') + '<td class="ns-pad"></td></tr>').join('') +
+                    t.columns.map((c, ci) => '<td data-r="' + ri + '" data-c="' + ci + '"' + (r.ro && r.ro.includes(c.id) ? ' class="ns-ro"' : (r.calc && r.calc.includes(c.id) ? ' class="ns-calc"' : '')) + priceHint(c, r.cells[c.id]) + '</td>').join('') + '<td class="ns-pad"></td></tr>').join('') +
                 (rows.length ? '' : '<tr><td></td><td colspan="' + t.columns.length + '" class="ns-dim">' + (filter ? 'No row matches the filter.' : 'Empty sheet — add a row.') + '</td></tr>') +
                 '</tbody>';
             if (sel) clampSel(t, rows);
@@ -756,8 +787,9 @@
             const t = table(), row = shownRows(t)[sel.r1], col = t.columns[sel.c1];
             const v = ed.value;
             if (save && row && col && v !== editOrig) {
+                const auto = row.calc && row.calc.includes(col.id);     // undo brings the USD conversion back
                 commit([{ op: 'set_cell', table: t.id, row: row.id, col: col.id, value: v }],
-                       [{ op: 'set_cell', table: t.id, row: row.id, col: col.id, value: editOrig }]);
+                       [{ op: 'set_cell', table: t.id, row: row.id, col: col.id, value: auto ? '' : editOrig }]);
             } else render();
         }
 
@@ -938,7 +970,7 @@
         }
         function tabMenu(btn, id) {
             const t = S.doc.tables.find((x) => x.id === id), i = S.doc.tables.indexOf(t);
-            const kinds = [['camera', 'Cameras'], ['telescope', 'Telescopes'], ['mount', 'Mounts'], ['other', 'Other']];
+            const kinds = [['camera', 'Cameras'], ['telescope', 'Telescopes'], ['mount', 'Mounts'], ['accessory', 'Accessories'], ['other', 'Other']];
             openMenu(btn, [
                 { label: 'Rename', action: () => renameTable(id) },
                 { label: 'Move left', action: () => i > 0 && send([{ op: 'move_table', table: id, after: i > 1 ? S.doc.tables[i - 2].id : null }]) },
