@@ -17,12 +17,20 @@ function load(seed) {
 }
 const cell = (x) => (x && typeof x === 'object' ? { v: x.v, f: x.f || '' } : { v: x == null ? '' : x, f: '' });
 const shown = (c) => (c ? String(c.v === null || c.v === undefined ? '' : c.v) : '');
+const colNum = (L) => L.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+const colName = (n) => { let s = ''; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
+const RATE = 32;   // stand-in for GOOGLEFINANCE("CURRENCY:USDTWD")
 
 function Sheet(s) {
     const g = () => s.grid;
     const at = (r, c) => { while (g().length < r) g().push([]); const row = g()[r - 1]; while (row.length < c) row.push({ v: '', f: '' }); return row; };
     const lastRow = () => { for (let r = g().length; r >= 1; r--) if (g()[r - 1].some((c) => shown(c) !== '' || c.f)) return r; return 0; };
     const lastCol = () => { let m = 0; g().forEach((row) => row.forEach((c, j) => { if (shown(c) !== '' || c.f) m = Math.max(m, j + 1); })); return m; };
+    // formulas are evaluated only for the USD → TWD shape, reading the USD cell in the same row (as Sheets does after moves)
+    const evalRow = (row) => row.forEach((c) => {
+        const m = c.f && c.f.match(/^=IF\(ISNUMBER\(([A-Z]+)\d+\),[A-Z]+\d+\*GOOGLEFINANCE/);
+        if (m) { const u = row[colNum(m[1]) - 1]; c.v = u && typeof u.v === 'number' ? u.v * RATE : ''; }
+    });
     const self = {
         getName: () => s.name, setName: (n) => { s.name = n; return self; }, getSheetId: () => s.id,
         getLastRow: lastRow, getLastColumn: lastCol, setFrozenRows: () => self,
@@ -46,7 +54,7 @@ function Sheet(s) {
         },
     };
     function Range(r, c, nr, nc) {
-        const get = (fn) => { const out = []; for (let i = 0; i < nr; i++) { const line = []; for (let j = 0; j < nc; j++) { const row = g()[r - 1 + i] || []; line.push(fn(row[c - 1 + j])); } out.push(line); } return out; };
+        const get = (fn) => { g().forEach(evalRow); const out = []; for (let i = 0; i < nr; i++) { const line = []; for (let j = 0; j < nc; j++) { const row = g()[r - 1 + i] || []; line.push(fn(row[c - 1 + j])); } out.push(line); } return out; };
         const put = (i, j, v) => {
             const row = at(r + i, c + j);
             if (typeof v === 'string' && v.charAt(0) === "'") row[c - 1 + j] = { v: v.slice(1), f: '' };
@@ -60,7 +68,9 @@ function Sheet(s) {
             setValue: (v) => { put(0, 0, v); return rg; },
             setValues: (vals) => { vals.forEach((line, i) => line.forEach((v, j) => put(i, j, v))); return rg; },
             clearContent: () => { for (let i = 0; i < nr; i++) for (let j = 0; j < nc; j++) put(i, j, ''); return rg; },
-            setFontWeight: () => rg,
+            setFontWeight: () => rg, setNumberFormat: () => rg,
+            setFormula: (f) => { const row = at(r, c); row[c - 1] = { v: '', f }; return rg; },
+            getA1Notation: () => colName(c) + r, getRow: () => r, getSheet: () => self,
         };
         return rg;
     }
