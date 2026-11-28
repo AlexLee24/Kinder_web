@@ -142,17 +142,16 @@
         const m = String(s || '').replace(/,/g, '').match(/(\d{3,6})\s*[×xX*]\s*(\d{3,6})/);
         return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null;
     }
-    const CUR = [[/US\$|USD|\$/i, 'USD'], [/EUR|€/i, 'EUR'], [/NT\$|NTD|TWD|台幣|新台幣/i, 'TWD'], [/JPY|円|¥|日圓/i, 'JPY']];
+    // a price is read one way only: the amount, then EUR, USD, TWD or JPY ("73000 USD", "~180,000 USD (TBC)", ">19,000 EUR").
+    // No code → nocur: shown with a reminder and left out of the totals (never assumed USD).
+    const CODE = /(?:^|[^A-Za-z])(EUR|USD|TWD|JPY)(?![A-Za-z])/i;
     function parsePrice(s) {
         s = String(s || '');
-        const clean = s.replace(/(\d),(?=\d{3}\b)/g, '$1');
-        const m = clean.match(/(\d+(?:\.\d+)?)\s*(k|K|萬|万|M)?/);
+        const m = s.replace(/(\d),(?=\d{3}\b)/g, '$1').match(/\d+(?:\.\d+)?/);
         if (!m) return null;
-        let amount = parseFloat(m[1]);
-        if (m[2] === 'k' || m[2] === 'K') amount *= 1e3; else if (m[2] === '萬' || m[2] === '万') amount *= 1e4; else if (m[2] === 'M') amount *= 1e6;
-        let currency = null;
-        for (const [re, c] of CUR) if (re.test(s)) { currency = c; break; }
-        return { amount, currency: currency || 'USD', guessed: !currency, approx: /[~≈>＞<]|–|—|-\s*\d|待|約|起/.test(s), text: s };
+        const code = s.match(CODE);
+        return { amount: parseFloat(m[0]), currency: code ? code[1].toUpperCase() : null, nocur: !code,
+                 approx: /[~≈>＞<]|–|—|-\s*\d|待|約|起/.test(s), text: s };
     }
 
     function tablesOf(kind) { return S.doc.tables.filter((t) => t.kind === kind); }
@@ -169,7 +168,8 @@
         const list = parsePrice(cell(t, r, /^(價格|price|cost|定價|list)/i));
         return list ? Object.assign(list, { source: 'list' }) : null;
     }
-    const toUSD = (p) => (p ? p.amount * (S.doc.fx[p.currency] || 0) : 0);
+    const toUSD = (p) => (p && p.currency ? p.amount * (S.doc.fx[p.currency] || 0) : 0);
+    const usdToTWD = (v) => (S.doc.fx.TWD ? v / S.doc.fx.TWD : 0);
 
     function cameraSpecs(t, r) {
         let px = null;
@@ -202,8 +202,10 @@
         out.extrasUSD = extrasUSD;
         const qty = cfg.qty || 1;
         out.totalUSD = qty * (toUSD(out.prices.tel) + toUSD(out.prices.cam) + toUSD(out.prices.mnt) + extrasUSD);
-        out.missing = ['tel', 'cam', 'mnt'].filter((k) => (k === 'mnt' ? cfg.mount : (k === 'tel' ? cfg.telescope : cfg.camera)) && !out.prices[k]);
-        out.approx = ['tel', 'cam', 'mnt'].some((k) => out.prices[k] && (out.prices[k].approx || out.prices[k].guessed));
+        const picked = ['tel', 'cam', 'mnt'].filter((k) => (k === 'mnt' ? cfg.mount : (k === 'tel' ? cfg.telescope : cfg.camera)));
+        out.missing = picked.filter((k) => !out.prices[k]);
+        out.nocur = picked.filter((k) => out.prices[k] && out.prices[k].nocur);
+        out.approx = ['tel', 'cam', 'mnt'].some((k) => out.prices[k] && out.prices[k].approx);
         if (focal && px && um) {
             const f = focal * (cfg.reducer || 1);
             out.fEff = f;
@@ -395,9 +397,12 @@
     function priceCell(p) {
         if (!p) return '<td class="ns-num ns-dim">—</td>';
         const usd = toUSD(p);
-        const title = p.text + (p.source === 'quote' ? ' (廠商報價)' : '') + (p.guessed ? ' — no currency, read as USD' : '');
-        return '<td class="ns-num" title="' + esc(title) + '">' + (p.approx || p.guessed ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(usd, 'USD') +
-            (p.currency !== 'USD' ? '<small>' + fmtMoney(p.amount, p.currency) + '</small>' : '') + (p.source === 'quote' ? '<small class="ns-quote">quote</small>' : '') + '</td>';
+        const title = p.text + (p.source === 'quote' ? ' (廠商報價)' : '');
+        if (p.nocur) return '<td class="ns-num is-warn" title="' + esc(title + ' — no currency: write EUR, USD, TWD or JPY after the amount') + '">—<small class="ns-warn-t">no currency</small></td>';
+        return '<td class="ns-num" title="' + esc(title) + '">' + (p.approx ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(usd, 'USD') +
+            (p.currency !== 'USD' && p.currency !== 'TWD' ? '<small>' + fmtMoney(p.amount, p.currency) + '</small>' : '') +
+            (S.doc.fx.TWD ? '<small class="ns-twd">' + fmtMoney(p.currency === 'TWD' ? p.amount : usdToTWD(usd), 'TWD') + '</small>' : '') +
+            (p.source === 'quote' ? '<small class="ns-quote">quote</small>' : '') + '</td>';
     }
 
     function renderCompare() {
@@ -425,9 +430,9 @@
                         '<td class="ns-num' + (x.etendue && x.etendue === maxEt ? ' is-best' : '') + '">' + (x.etendue ? x.etendue.toFixed(3) + '<small>m²·deg²</small>' : '—') + '</td>'
                     ) : '<td colspan="6" class="ns-dim">Missing ' + [!x.focal && 'focal length', !x.px && 'pixel count', !x.um && 'pixel size'].filter(Boolean).join(', ') + ' — add it to the sheet or override it in the setup.</td>') +
                     priceCell(x.prices.tel) + priceCell(x.prices.cam) + priceCell(x.prices.mnt) +
-                    '<td class="ns-num">' + (x.extrasUSD ? fmtMoney(x.extrasUSD, 'USD') : '—') + '</td>' +
-                    '<td class="ns-num ns-total">' + (x.approx ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(x.totalUSD, 'USD') + (x.missing.length ? '<small class="ns-warn-t">no price: ' + x.missing.map((k) => ({ tel: 'telescope', cam: 'camera', mnt: 'mount' }[k])).join(', ') + '</small>' : '') + '</td>' +
-                    (twd ? '<td class="ns-num">' + fmtMoney(x.totalUSD * twd, 'TWD') + '</td>' : '') +
+                    '<td class="ns-num">' + (x.extrasUSD ? fmtMoney(x.extrasUSD, 'USD') + (S.doc.fx.TWD ? '<small class="ns-twd">' + fmtMoney(usdToTWD(x.extrasUSD), 'TWD') + '</small>' : '') : '—') + '</td>' +
+                    '<td class="ns-num ns-total">' + (x.approx ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(x.totalUSD, 'USD') + [['no price', x.missing], ['no currency', x.nocur]].map(([lab, ks]) => (ks.length ? '<small class="ns-warn-t">' + lab + ': ' + ks.map((k) => ({ tel: 'telescope', cam: 'camera', mnt: 'mount' }[k])).join(', ') + '</small>' : '')).join('') + '</td>' +
+                    (twd ? '<td class="ns-num ns-total">' + (x.approx ? '<span class="ns-approx">≈</span>' : '') + fmtMoney(x.totalUSD * twd, 'TWD') + '</td>' : '') +
                     '</tr>';
             }).join('') + '</tbody>';
 
@@ -600,6 +605,22 @@
                 '<button type="button" class="ns-tab ns-tab-add" id="nsAddTab" title="New sheet">+</button>';
         }
 
+        // price columns (價格 / 廠商報價 / price / quote): the cell text plus its value in TWD, read the same way as Compare
+        const PRICE_COL = /廠商報價|quote|報價|^(價格|price|cost|定價|list)/i;
+        function priceHint(c, text) {
+            const p = text && PRICE_COL.test(c.name || '') ? parsePrice(text) : null;
+            if (p && p.nocur) return ' title="' + esc(text + ' — no currency: write EUR, USD, TWD or JPY after the amount, e.g. 73000 USD') + '"><span class="ns-pc"><span class="ns-pv">' +
+                esc(text) + '</span><span class="ns-twd ns-warn-t">+ EUR / USD / TWD / JPY</span></span>';
+            const twd = p && S.doc.fx.TWD && S.doc.fx[p.currency] ? (p.currency === 'TWD' ? p.amount : usdToTWD(toUSD(p))) : 0;
+            if (!twd) return '>' + esc(text || '');
+            const tip = text + ' ≈ ' + fmtMoney(twd, 'TWD');
+            const short = twd >= 1e6 ? (twd / 1e6).toFixed(twd >= 1e8 ? 0 : 2) + 'M' : (twd >= 1e3 ? Math.round(twd / 1e3) + 'k' : Math.round(twd));
+            return ' title="' + esc(tip) + '"><span class="ns-pc"><span class="ns-pv">' + esc(text) + '</span><span class="ns-twd">' + (p.approx ? '≈' : '') + 'NT$' + short + '</span></span>';
+        }
+
+        // a price column still at the default width is drawn 200 px wide so its TWD value fits; a resized one keeps its width
+        const colW = (c) => (PRICE_COL.test(c.name || '') && (!c.width || c.width === 140) ? 200 : (c.width || 140));
+
         function render() {
             if (editing) return;               // the editor would vanish under the cursor; rendered after commit
             renderTabs();
@@ -607,13 +628,13 @@
             const g = grid();
             if (!t) { g.innerHTML = '<tbody><tr><td class="ns-dim">No sheets. Add one with +.</td></tr></tbody>'; return; }
             const rows = shownRows(t);
-            const total = 44 + t.columns.reduce((s, c) => s + (c.width || 140), 0) + 44;
+            const total = 44 + t.columns.reduce((s, c) => s + colW(c), 0) + 44;
             g.style.width = total + 'px';
-            g.innerHTML = '<colgroup><col style="width:44px">' + t.columns.map((c) => '<col style="width:' + (c.width || 140) + 'px">').join('') + '<col style="width:44px"></colgroup>' +
-                '<thead><tr><th class="ns-corner"></th>' + t.columns.map((c, ci) => '<th data-c="' + ci + '"><span class="ns-hname">' + esc(c.name || ' ') + '</span><button type="button" class="ns-hmenu" data-c="' + ci + '" aria-label="Column options">▾</button><span class="ns-resize" data-c="' + ci + '"></span></th>').join('') +
+            g.innerHTML = '<colgroup><col style="width:44px">' + t.columns.map((c) => '<col style="width:' + colW(c) + 'px">').join('') + '<col style="width:44px"></colgroup>' +
+                '<thead><tr><th class="ns-corner"></th>' + t.columns.map((c, ci) => '<th data-c="' + ci + '"' + (PRICE_COL.test(c.name || '') ? ' title="Write the amount, then EUR, USD, TWD or JPY (e.g. 73000 USD)"' : '') + '><span class="ns-hname">' + esc(c.name || ' ') + (PRICE_COL.test(c.name || '') ? '<small class="ns-hcur">EUR · USD · TWD · JPY</small>' : '') + '</span><button type="button" class="ns-hmenu" data-c="' + ci + '" aria-label="Column options">▾</button><span class="ns-resize" data-c="' + ci + '"></span></th>').join('') +
                 '<th class="ns-addcol"><button type="button" id="nsAddCol" title="Add a column">+</button></th></tr></thead><tbody>' +
                 rows.map((r, ri) => '<tr><th class="ns-rn" data-r="' + ri + '">' + (t.rows.indexOf(r) + 1) + '</th>' +
-                    t.columns.map((c, ci) => '<td data-r="' + ri + '" data-c="' + ci + '">' + esc(r.cells[c.id] || '') + '</td>').join('') + '<td class="ns-pad"></td></tr>').join('') +
+                    t.columns.map((c, ci) => '<td data-r="' + ri + '" data-c="' + ci + '"' + priceHint(c, r.cells[c.id]) + '</td>').join('') + '<td class="ns-pad"></td></tr>').join('') +
                 (rows.length ? '' : '<tr><td></td><td colspan="' + t.columns.length + '" class="ns-dim">' + (filter ? 'No row matches the filter.' : 'Empty sheet — add a row.') + '</td></tr>') +
                 '</tbody>';
             if (sel) clampSel(t, rows);
@@ -960,7 +981,7 @@
                 const rs = e.target.closest('.ns-resize');
                 if (rs) {
                     e.preventDefault();
-                    const ci = +rs.dataset.c, t = table(), col = t.columns[ci], x0 = e.clientX, w0 = col.width || 140;
+                    const ci = +rs.dataset.c, t = table(), col = t.columns[ci], x0 = e.clientX, w0 = colW(col);
                     const colEl = g.querySelectorAll('col')[ci + 1], g0 = parseFloat(g.style.width);
                     const move = (ev) => { const w = Math.max(48, Math.min(900, w0 + ev.clientX - x0)); colEl.style.width = w + 'px'; g.style.width = (g0 + w - w0) + 'px'; };
                     const up = (ev) => {

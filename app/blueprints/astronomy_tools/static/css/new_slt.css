@@ -95,6 +95,13 @@ select.ns-input { padding-right: 4px; }
 .ns-approx { color: var(--kw-text-muted); margin-right: 2px; }
 .ns-total { font-weight: 600; color: var(--kw-text-primary); }
 .ns-quote { color: var(--kw-color-info) !important; }
+.ns-twd { color: var(--kw-text-muted); }
+.ns-grid .ns-pc { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ns-grid .ns-pv { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ns-grid .ns-pc .ns-twd { flex: none; font-size: 0.78em; font-variant-numeric: tabular-nums; }
+.ns-hcur { margin-left: 6px; font-size: 0.68em; font-weight: 400; opacity: 0.75; letter-spacing: 0; }
+.ns-price-rule { flex-basis: 100%; }
+.ns-price-rule code { font-size: 0.95em; }
 .ns-fx { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 14px; font-size: 0.8rem; color: var(--kw-text-secondary); }
 .ns-fx label { display: inline-flex; align-items: center; gap: 6px; }
 .ns-fx .ns-input { width: 84px; min-height: 30px; }

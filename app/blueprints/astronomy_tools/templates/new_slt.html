@@ -89,7 +89,7 @@
     <section class="kw-panel">
         <div class="kw-panel-head">
             <h2>Compare</h2>
-            <span class="kw-muted">numbers read from the sheet below; prices use the 廠商報價 column when it has a number, else 價格</span>
+            <span class="kw-muted">numbers read from the sheet below; prices are read as the amount, then EUR, USD, TWD or JPY, from 廠商報價 when it has a number, else 價格</span>
         </div>
         <div class="ns-scroll"><table class="kw-table ns-compare" id="nsCompare"></table></div>
         <div class="ns-fx" id="nsFx"></div>
@@ -109,6 +109,7 @@
         <div class="ns-grid-wrap" id="nsGridWrap"><table class="ns-grid" id="nsGrid"></table></div>
         <div class="ns-sheet-foot">
             <button type="button" class="kw-btn kw-btn-sm" id="nsAddRow">+ Row</button>
+            <span class="ns-hint ns-price-rule">Prices: write the amount, then EUR, USD, TWD or JPY — e.g. <code>73000 USD</code>, <code>~180,000 USD</code>, <code>&gt;19,000 EUR</code>. A price without one of these is flagged and left out of the totals.</span>
             <span class="ns-hint">Double-click or type to edit · Enter / Tab to move · ⌘C / ⌘V work with Google Sheets and Excel · column ▾ for sort, insert, rename, delete · row number for row actions · drag a header edge to resize</span>
         </div>
     </section>
